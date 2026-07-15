@@ -2,9 +2,15 @@
 .idea/
 __pycache__/
 *.py[cod]
+.matplotlib/
+.eis_solver_user/
+sample_data/
+docs/EIS Solver Vault/.obsidian/
+Introductory impedance spectroscopy.pdf
 
 build/
 dist/
 
 *.log
 *.tmp
+*.zip

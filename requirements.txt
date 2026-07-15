@@ -1,0 +1,9 @@
+galvani
+impedance
+matplotlib
+numpy
+openpyxl
+pandas
+pymupdf
+pyinstaller
+PySide6

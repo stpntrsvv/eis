@@ -1,0 +1,38 @@
+{
+	"nodes":[
+		{"id":"start","type":"file","file":"00 Start Here.md","x":0,"y":0,"width":360,"height":220},
+		{"id":"product","type":"file","file":"01 Product Overview.md","x":-480,"y":-260,"width":320,"height":180},
+		{"id":"workflow","type":"file","file":"02 User Workflow.md","x":-480,"y":0,"width":320,"height":180},
+		{"id":"architecture","type":"file","file":"03 Architecture.md","x":480,"y":-260,"width":320,"height":180},
+		{"id":"gui","type":"file","file":"06 GUI Features.md","x":480,"y":0,"width":320,"height":180},
+		{"id":"science","type":"file","file":"04 Scientific Model.md","x":0,"y":320,"width":320,"height":180},
+		{"id":"cookbook","type":"file","file":"11 EIS Physical Cookbook.md","x":-480,"y":320,"width":320,"height":180},
+		{"id":"math","type":"file","file":"12 Fitting Math Notes.md","x":-480,"y":560,"width":320,"height":180},
+		{"id":"checklist","type":"file","file":"13 Model Validity Checklist.md","x":0,"y":560,"width":320,"height":180},
+		{"id":"failure","type":"file","file":"14 Known Failure Modes.md","x":480,"y":560,"width":320,"height":180},
+		{"id":"parameters","type":"file","file":"15 Parameter Meaning Library.md","x":480,"y":320,"width":320,"height":180},
+		{"id":"kk","type":"file","file":"23 Kramers-Kronig Validation.md","x":0,"y":800,"width":340,"height":180},
+		{"id":"export","type":"file","file":"08 Export Contract.md","x":920,"y":0,"width":300,"height":180},
+		{"id":"suite","type":"file","file":"10 Future Chem Suite.md","x":0,"y":-520,"width":320,"height":180},
+		{"id":"philosophy","type":"file","file":"17 Chem Suite Philosophy.md","x":440,"y":-520,"width":320,"height":180},
+		{"id":"handoff","type":"file","file":"AI Handoff.md","x":-440,"y":-520,"width":320,"height":180}
+	],
+	"edges":[
+		{"id":"e1","fromNode":"start","fromSide":"left","toNode":"product","toSide":"right"},
+		{"id":"e2","fromNode":"start","fromSide":"left","toNode":"workflow","toSide":"right"},
+		{"id":"e3","fromNode":"start","fromSide":"right","toNode":"architecture","toSide":"left"},
+		{"id":"e4","fromNode":"start","fromSide":"right","toNode":"gui","toSide":"left"},
+		{"id":"e5","fromNode":"start","fromSide":"bottom","toNode":"science","toSide":"top"},
+		{"id":"e6","fromNode":"science","fromSide":"left","toNode":"cookbook","toSide":"right"},
+		{"id":"e7","fromNode":"science","fromSide":"left","toNode":"math","toSide":"right"},
+		{"id":"e8","fromNode":"science","fromSide":"bottom","toNode":"checklist","toSide":"top"},
+		{"id":"e9","fromNode":"science","fromSide":"right","toNode":"failure","toSide":"left"},
+		{"id":"e10","fromNode":"science","fromSide":"right","toNode":"parameters","toSide":"left"},
+		{"id":"e11","fromNode":"gui","fromSide":"right","toNode":"export","toSide":"left"},
+		{"id":"e12","fromNode":"start","fromSide":"top","toNode":"suite","toSide":"bottom"},
+		{"id":"e13","fromNode":"suite","fromSide":"right","toNode":"philosophy","toSide":"left"},
+		{"id":"e14","fromNode":"start","fromSide":"top","toNode":"handoff","toSide":"bottom"},
+		{"id":"e15","fromNode":"science","fromSide":"bottom","toNode":"kk","toSide":"top"},
+		{"id":"e16","fromNode":"kk","fromSide":"top","toNode":"checklist","toSide":"bottom"}
+	]
+}

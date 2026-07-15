@@ -2,10 +2,10 @@
 
 
 a = Analysis(
-    ['eis_app.py'],
+    ['eis_qt.py'],
     pathex=[],
     binaries=[],
-    datas=[('.venv/Lib/site-packages/customtkinter', 'customtkinter/')],
+    datas=[],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -21,7 +21,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='eis_app',
+    name='eis_qt',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -40,5 +40,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='eis_app',
+    name='eis_qt',
 )

@@ -50,3 +50,14 @@ def estimate_dataset_scale(frequencies, Z_experimental):
     C_est = float(1.0 / (2 * np.pi * f_mid * R1_est)) if R1_est > 0 else 1e-4
 
     return R0_est, R1_est, C_est
+
+
+# Compatibility layer for new parser stack. Keep these definitions last so they
+# override the old mojibake implementation above.
+from eis_core import estimate_dataset_scale  # noqa: E402,F401
+from eis_io import load_eis_file  # noqa: E402
+
+
+def load_any_eis_file(file_path):
+    dataset = load_eis_file(file_path)
+    return dataset.frequencies, dataset.z

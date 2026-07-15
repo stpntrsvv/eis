@@ -1,3 +1,19 @@
+from eis_qt import main
+
+
+if __name__ == "__main__":
+    main()
+
+raise SystemExit("eis_app.py is a legacy wrapper. Use eis_qt.py as the active GUI entrypoint.")
+
+r"""
+Legacy customtkinter implementation kept below as inert history.
+
+The active GUI is eis_qt.py. This wrapper exists so old launch commands still
+open the PySide6 application without requiring customtkinter.
+
+Legacy source follows as an inert string archive:
+
 import os
 import re
 import warnings
@@ -325,3 +341,4 @@ class EisApp(ctk.CTk):
 if __name__ == "__main__":
     app = EisApp()
     app.mainloop()
+"""
