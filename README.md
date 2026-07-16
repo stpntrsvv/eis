@@ -158,11 +158,12 @@ Supported elements in `build_bounds_and_guess()`:
 - Active GUI direction.
 - PySide6/Qt shell over `eis_core.py`.
 - Contains multi-file loading controls, a dataset summary table, an all-model fit table for the selected dataset, Nyquist and Bode plots, and a best-parameter table.
+- Provides draggable horizontal and vertical splitters for resizing the control area, dataset/results tables, log, plot tabs, and Parser details.
 - Includes a Residuals tab with Re/Im residuals and relative residual magnitude vs frequency.
 - Includes a KK Check tab with Lin-KK RC reconstruction, relative error vs frequency, and PASS/WARN/FAIL status.
 - Includes a Parser tab with source format, selected channel, selected columns, full column list, and parser metadata.
 - Provides an impedance-channel dropdown when multiple channels are detected.
-- Multi-analysis runs in a Qt worker thread with progress and cooperative cancel controls. Cancel takes effect after the current file/fit step finishes.
+- Multi-analysis runs in a Qt worker thread with per-circuit progress and cooperative cancel controls. Cancel takes effect after the current circuit finishes.
 - Provides two circuit preset menus: `Interface` for ideal RC/CPE/charge-transfer/two-arc models and `Transport` for Warburg/diffusion/inductive models.
 - `Run selected` fits the chosen preset union; `Run auto-fit` still fits the full default circuit list for lazy/complete screening.
 - The preset menus and manual circuit input live behind `Pro mode`; the default workflow only exposes file loading, auto-fit, cancel, and export.
@@ -201,7 +202,9 @@ Supported elements in `build_bounds_and_guess()`:
 - `eis_desktop.py` was removed after the PySide6 migration.
 - `eis_utils.py` still contains old mojibake history, but its final definitions delegate to the new parser/core layer.
 - `galvani` is GPL-3.0-or-later. Revisit licensing if this becomes a distributed closed-source executable.
-- No automated tests yet.
+- No formal automated test suite yet.
+- Each nonlinear circuit fit has a production budget of 5,000 function evaluations with practical tolerances; the upstream `impedance.py` defaults (100,000 evaluations and `ftol=1e-13`) are intentionally not used.
+- Parser cleaning rejects non-positive frequencies and median-aggregates exact duplicate frequencies while recording the operation in parser metadata.
 
 ## TODO Short List
 
@@ -212,7 +215,7 @@ Supported elements in `build_bounds_and_guess()`:
 5. Add parser and bounds-generation tests.
 6. Add import/export for Pro preset JSON files if sharing presets between machines becomes useful.
 7. Decide whether cycling/OCV analysis is needed; if yes, rebuild it as a separate module from scratch.
-8. Validate BioLogic `.mpr` on a real EIS binary from the lab.
+8. Extend real BioLogic `.mpr` validation to additional instruments, channels, and multi-cycle files.
 
 ## Rules For Future AI Chats
 

@@ -43,8 +43,8 @@ status: active
 
 | Симптом | Причина | Решение |
 |---|---|---|
-| Cancel не мгновенный | cooperative cancel | дождаться текущего fit step |
+| Cancel не мгновенный | cooperative cancel | дождаться текущей схемы; следующая уже не запустится |
+| сложная схема долго оптимизируется | poor identifiability / bad initial guess | production budget остановит fit после 5,000 evaluations и пометит `LIMIT` |
 | `.mpt` долго фитится | большой/сложный набор точек | normal, worker keeps GUI alive |
 | presets не в AppData | нет write access | fallback `.eis_solver_user` |
 | русская локализация не меняет экспорт | намеренно | export contract stable |
-

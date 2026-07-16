@@ -20,7 +20,7 @@ metadata
 | generic text/txt/csv/dat | working |
 | SmartStat-like first three numeric columns | working |
 | BioLogic `.mpt` | working through `galvani` |
-| BioLogic `.mpr` | loader present through `galvani`, needs real EIS validation |
+| BioLogic `.mpr` | working on a validated real single-sweep `Z` file; broader coverage pending |
 
 ## Parser Flow
 
@@ -67,7 +67,7 @@ For named columns:
 
 ## What Needs Lab Data
 
-The missing validation item is a real EIS `.mpr` from BioLogic.
+One real single-sweep BioLogic EIS `.mpr` has been validated. More lab files are needed for:
 
 Questions to answer with that file:
 
@@ -77,3 +77,11 @@ Questions to answer with that file:
 - Are units and signs consistent?
 - Does galvani expose all required arrays cleanly?
 
+## Fit Input Cleaning
+
+Before fitting, the parser now:
+
+- drops non-finite rows;
+- drops zero and negative frequencies;
+- median-aggregates exact duplicate frequencies;
+- records raw/fit point counts and all cleaning actions in parser metadata.

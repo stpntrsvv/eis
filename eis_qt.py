@@ -54,7 +54,7 @@ from eis_core import (
     circuit_to_latex,
     circuit_to_readable,
     estimate_dataset_scale,
-    fit_circuits,
+    fit_circuit,
     lin_kk_check,
     parameter_names,
 )
@@ -403,7 +403,8 @@ class FitWorker(QObject):
 
     @Slot()
     def run(self):
-        total = len(self.cases)
+        total = len(self.cases) * len(self.circuits)
+        completed = 0
         cancelled = False
         self.log.emit(f"{self.run_label}: {len(self.circuits)} circuit(s) selected.")
         for index, case in enumerate(self.cases):
@@ -415,12 +416,28 @@ class FitWorker(QObject):
             self.started_case.emit(index, label)
             self.log.emit(f"Fitting {label}...")
             try:
-                results = fit_circuits(
-                    case.frequencies,
-                    case.z_experimental,
-                    self.circuits,
-                    parameter_overrides_by_circuit=self.parameter_overrides_by_circuit,
-                )
+                results = []
+                for circuit_string in self.circuits:
+                    if self.cancel_requested:
+                        cancelled = True
+                        break
+                    self.log.emit(f"  {circuit_string}...")
+                    result = fit_circuit(
+                        case.frequencies,
+                        case.z_experimental,
+                        circuit_string,
+                        case.scale,
+                        parameter_overrides=self.parameter_overrides_by_circuit.get(circuit_string),
+                    )
+                    results.append(result)
+                    completed += 1
+                    self.progress.emit(completed, total)
+                    outcome = (
+                        f"{result.status}, fit={result.mean_fit_error:.3f}%"
+                        if result.success
+                        else f"{result.status}: {result.error_message}"
+                    )
+                    self.log.emit(f"  {circuit_string}: {outcome} ({result.elapsed_seconds:.2f}s)")
                 if self.cancel_requested:
                     cancelled = True
                     break
@@ -433,8 +450,6 @@ class FitWorker(QObject):
             except Exception as exc:
                 self.failed_case.emit(index, str(exc))
                 self.log.emit(f"Fit error for {label}: {exc}")
-
-            self.progress.emit(index + 1, total)
 
         self.finished.emit(cancelled)
 
@@ -567,11 +582,16 @@ class EisQtApp(QMainWindow):
         root = QWidget()
         root_layout = QHBoxLayout(root)
 
-        splitter = QSplitter(Qt.Horizontal)
-        root_layout.addWidget(splitter)
+        self.main_splitter = QSplitter(Qt.Horizontal)
+        self.main_splitter.setChildrenCollapsible(False)
+        root_layout.addWidget(self.main_splitter)
 
         left = QWidget()
         left_layout = QVBoxLayout(left)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        self.left_splitter = QSplitter(Qt.Vertical)
+        self.left_splitter.setChildrenCollapsible(False)
+        left_layout.addWidget(self.left_splitter)
 
         self.file_box = QGroupBox("Datasets")
         file_layout = QVBoxLayout(self.file_box)
@@ -693,7 +713,7 @@ class EisQtApp(QMainWindow):
         self.progress_bar.setTextVisible(True)
         file_layout.addWidget(self.progress_bar)
         file_layout.addLayout(buttons)
-        left_layout.addWidget(self.file_box)
+        self.left_splitter.addWidget(self.file_box)
 
         self.cases_table = QTableWidget(0, 9)
         self.cases_table.setHorizontalHeaderLabels(["Status", "File", "Format", "Points", "KK", "Best circuit", "Fit, %", "BIC", "Flags"])
@@ -709,7 +729,8 @@ class EisQtApp(QMainWindow):
         self.cases_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.cases_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.cases_table.currentCellChanged.connect(self.on_case_changed)
-        left_layout.addWidget(self.cases_table, stretch=1)
+        self.cases_table.setMinimumHeight(90)
+        self.left_splitter.addWidget(self.cases_table)
 
         self.results_table = QTableWidget(0, 8)
         self.results_table.setHorizontalHeaderLabels(["Status", "Circuit", "Fit, %", "BIC", "AIC", "Params", "Param err, %", "Flags / Message"])
@@ -723,12 +744,18 @@ class EisQtApp(QMainWindow):
         self.results_table.horizontalHeader().setSectionResizeMode(7, QHeaderView.Stretch)
         self.results_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.results_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        left_layout.addWidget(self.results_table, stretch=1)
+        self.results_table.setMinimumHeight(90)
+        self.left_splitter.addWidget(self.results_table)
 
         self.log_output = QTextEdit()
         self.log_output.setReadOnly(True)
-        self.log_output.setMinimumHeight(160)
-        left_layout.addWidget(self.log_output)
+        self.log_output.setMinimumHeight(70)
+        self.left_splitter.addWidget(self.log_output)
+        self.left_splitter.setStretchFactor(0, 0)
+        self.left_splitter.setStretchFactor(1, 2)
+        self.left_splitter.setStretchFactor(2, 3)
+        self.left_splitter.setStretchFactor(3, 1)
+        self.left_splitter.setSizes([250, 170, 250, 120])
 
         right = QWidget()
         right_layout = QVBoxLayout(right)
@@ -780,8 +807,14 @@ class EisQtApp(QMainWindow):
         self.metadata_output = QTextEdit()
         self.metadata_output.setReadOnly(True)
         parser_layout.addWidget(self.parser_summary)
-        parser_layout.addWidget(self.columns_table, stretch=2)
-        parser_layout.addWidget(self.metadata_output, stretch=1)
+        self.parser_splitter = QSplitter(Qt.Vertical)
+        self.parser_splitter.setChildrenCollapsible(False)
+        self.parser_splitter.addWidget(self.columns_table)
+        self.parser_splitter.addWidget(self.metadata_output)
+        self.parser_splitter.setStretchFactor(0, 2)
+        self.parser_splitter.setStretchFactor(1, 1)
+        self.parser_splitter.setSizes([420, 220])
+        parser_layout.addWidget(self.parser_splitter, stretch=1)
         self.tabs.addTab(parser_tab, "Parser")
 
         params_tab = QWidget()
@@ -798,9 +831,11 @@ class EisQtApp(QMainWindow):
 
         right_layout.addWidget(self.tabs)
 
-        splitter.addWidget(left)
-        splitter.addWidget(right)
-        splitter.setSizes([470, 810])
+        self.main_splitter.addWidget(left)
+        self.main_splitter.addWidget(right)
+        self.main_splitter.setStretchFactor(0, 2)
+        self.main_splitter.setStretchFactor(1, 3)
+        self.main_splitter.setSizes([470, 810])
 
         self.setCentralWidget(root)
         self.plot_data()
@@ -1265,7 +1300,7 @@ class EisQtApp(QMainWindow):
             case.best_result = None
             case.error_message = ""
 
-        self.progress_bar.setRange(0, len(self.cases))
+        self.progress_bar.setRange(0, len(self.cases) * len(circuits))
         self.progress_bar.setValue(0)
         self.populate_cases_table()
         self.set_fit_controls_running(True)
@@ -1546,13 +1581,13 @@ class EisQtApp(QMainWindow):
         best_result = case.best_result if case else None
         self.results_table.setRowCount(len(results))
         for row, result in enumerate(results):
-            status = result.status if result.success else "FAIL"
+            status = result.status
             fit_error = f"{result.mean_fit_error:.3f}" if result.success else ""
             bic = f"{result.bic:.2f}" if result.success else ""
             aic = f"{result.aic:.2f}" if result.success else ""
             n_params = str(result.n_params) if result.success else ""
             param_error = f"{result.max_param_error:.2f}" if result.success else ""
-            flags = ", ".join(result.flags) if result.success and result.flags else result.error_message
+            flags = ", ".join(result.flags) if result.flags else result.error_message
             values = [status, result.circuit_string, fit_error, bic, aic, n_params, param_error, flags]
             for col, value in enumerate(values):
                 item = QTableWidgetItem(value)
@@ -1878,6 +1913,7 @@ class EisQtApp(QMainWindow):
                     "aic": result.aic if result else "",
                     "bic": result.bic if result else "",
                     "n_params": result.n_params if result else "",
+                    "fit_elapsed_seconds": result.elapsed_seconds if result else "",
                     "fit_status": result.status if result else ("ERROR" if case.error_message else "NOT_FIT"),
                     "flags": ", ".join(result.flags) if result and result.flags else case.error_message,
                 }
@@ -1898,14 +1934,15 @@ class EisQtApp(QMainWindow):
                         "circuit": result.circuit_string,
                         "is_best": result is case.best_result,
                         "success": result.success,
-                        "status": result.status if result.success else "FAIL",
+                        "status": result.status,
                         "fit_percent": result.mean_fit_error if result.success else "",
                         "max_param_error_percent": result.max_param_error if result.success else "",
                         "weighted_rss": result.rss_weighted if result.success else "",
                         "aic": result.aic if result.success else "",
                         "bic": result.bic if result.success else "",
                         "n_params": result.n_params if result.success else "",
-                        "flags": ", ".join(result.flags) if result.success and result.flags else "",
+                        "elapsed_seconds": result.elapsed_seconds,
+                        "flags": ", ".join(result.flags) if result.flags else "",
                         "error_message": result.error_message,
                     }
                 )
@@ -2021,6 +2058,7 @@ class EisQtApp(QMainWindow):
                     "aic",
                     "bic",
                     "n_params",
+                    "elapsed_seconds",
                     "flags",
                     "error_message",
                 ]
@@ -2124,6 +2162,7 @@ class EisQtApp(QMainWindow):
             file.write(f"AIC: {case.best_result.aic:.6f}\n")
             file.write(f"BIC: {case.best_result.bic:.6f}\n")
             file.write(f"Status: {case.best_result.status}\n")
+            file.write(f"Fit time: {case.best_result.elapsed_seconds:.3f} s\n")
             file.write(f"Flags: {', '.join(case.best_result.flags) if case.best_result.flags else '-'}\n\n")
             file.write("All circuit attempts:\n")
             for result in case.results or []:
@@ -2134,10 +2173,14 @@ class EisQtApp(QMainWindow):
                         f"BIC={result.bic:.3f}, "
                         f"AIC={result.aic:.3f}, "
                         f"param={result.max_param_error:.2f}%, "
+                        f"time={result.elapsed_seconds:.3f}s, "
                         f"flags={', '.join(result.flags) if result.flags else '-'}\n"
                     )
                 else:
-                    file.write(f"  [FAIL] {result.circuit_string}: {result.error_message}\n")
+                    file.write(
+                        f"  [{result.status}] {result.circuit_string}: "
+                        f"time={result.elapsed_seconds:.3f}s, {result.error_message}\n"
+                    )
 
             file.write("\nBest parameters:\n")
             model = case.best_result.model

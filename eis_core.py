@@ -2,6 +2,7 @@ import contextlib
 from dataclasses import dataclass
 import io
 import re
+import time
 from typing import Iterable, Optional
 
 import numpy as np
@@ -9,6 +10,14 @@ from impedance.models.circuits import CustomCircuit
 from impedance import validation as impedance_validation
 
 impedance_validation.circuit_elements.setdefault("np", np)
+
+
+# impedance.py otherwise defaults to 100,000 function evaluations and a very
+# strict ftol=1e-13. A difficult/non-identifiable circuit can therefore occupy a
+# workstation for minutes. These are deliberate production budgets, not merely
+# optimizer hints.
+DEFAULT_MAX_FIT_EVALUATIONS = 5_000
+DEFAULT_FIT_TOLERANCE = 1e-9
 
 
 IDEAL_RC_CIRCUITS = [
@@ -71,6 +80,7 @@ class FitResult:
     status: str = "FAIL"
     flags: tuple[str, ...] = ()
     error_message: str = ""
+    elapsed_seconds: float = 0.0
 
 
 @dataclass
@@ -205,7 +215,16 @@ def apply_parameter_overrides(circuit_string: str, low_bounds, high_bounds, init
     return low_bounds, high_bounds, initial_guess
 
 
-def fit_circuit(frequencies, z_data, circuit_string: str, scale: DatasetScale, parameter_overrides=None) -> FitResult:
+def fit_circuit(
+    frequencies,
+    z_data,
+    circuit_string: str,
+    scale: DatasetScale,
+    parameter_overrides=None,
+    max_fit_evaluations: int = DEFAULT_MAX_FIT_EVALUATIONS,
+    fit_tolerance: float = DEFAULT_FIT_TOLERANCE,
+) -> FitResult:
+    started_at = time.monotonic()
     try:
         low_bounds, high_bounds, guess = build_bounds_and_guess(circuit_string, scale)
         low_bounds, high_bounds, guess = apply_parameter_overrides(
@@ -218,7 +237,16 @@ def fit_circuit(frequencies, z_data, circuit_string: str, scale: DatasetScale, p
         ).tolist()
 
         circuit = CustomCircuit(circuit_string, initial_guess=safe_guess)
-        circuit.fit(frequencies, z_data, bounds=(low_bounds, high_bounds), weight_by_modulus=True)
+        circuit.fit(
+            frequencies,
+            z_data,
+            bounds=(low_bounds, high_bounds),
+            weight_by_modulus=True,
+            maxfev=int(max_fit_evaluations),
+            ftol=float(fit_tolerance),
+            xtol=float(fit_tolerance),
+            gtol=float(fit_tolerance),
+        )
 
         z_predicted = circuit.predict(frequencies)
         relative_residuals = np.abs(z_data - z_predicted) / np.maximum(np.abs(z_data), 1e-30)
@@ -256,9 +284,24 @@ def fit_circuit(frequencies, z_data, circuit_string: str, scale: DatasetScale, p
             n_params=n_params,
             status=status,
             flags=tuple(flags),
+            elapsed_seconds=time.monotonic() - started_at,
         )
     except Exception as exc:
-        return FitResult(circuit_string=circuit_string, success=False, error_message=str(exc))
+        message = str(exc)
+        budget_exhausted = any(
+            marker in message.lower()
+            for marker in ("maximum number of function evaluations", "maxfev", "optimal parameters not found")
+        )
+        if budget_exhausted:
+            message = f"Optimization budget exhausted ({max_fit_evaluations} evaluations): {message}"
+        return FitResult(
+            circuit_string=circuit_string,
+            success=False,
+            status="LIMIT" if budget_exhausted else "FAIL",
+            flags=("LIMIT:optimization_budget_exhausted",) if budget_exhausted else (),
+            error_message=message,
+            elapsed_seconds=time.monotonic() - started_at,
+        )
 
 
 def fit_circuits(
@@ -266,19 +309,30 @@ def fit_circuits(
     z_data,
     circuits: Iterable[str] = DEFAULT_CIRCUITS,
     parameter_overrides_by_circuit=None,
+    max_fit_evaluations: int = DEFAULT_MAX_FIT_EVALUATIONS,
+    fit_tolerance: float = DEFAULT_FIT_TOLERANCE,
+    on_result=None,
+    should_cancel=None,
 ) -> list[FitResult]:
     scale = estimate_dataset_scale(frequencies, z_data)
     overrides = parameter_overrides_by_circuit or {}
-    return [
-        fit_circuit(
+    results = []
+    for circuit_string in circuits:
+        if should_cancel is not None and should_cancel():
+            break
+        result = fit_circuit(
             frequencies,
             z_data,
             circuit_string,
             scale,
             parameter_overrides=overrides.get(circuit_string),
+            max_fit_evaluations=max_fit_evaluations,
+            fit_tolerance=fit_tolerance,
         )
-        for circuit_string in circuits
-    ]
+        results.append(result)
+        if on_result is not None:
+            on_result(result)
+    return results
 
 
 def lin_kk_check(

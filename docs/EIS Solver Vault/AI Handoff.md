@@ -32,9 +32,9 @@ It includes:
 
 ## Main Open Risk
 
-Real BioLogic EIS `.mpr` validation is still pending.
+One real single-sweep BioLogic EIS `.mpr` with channel `Z` has been validated. Broader validation remains pending for multi-cycle files and channels `Zce/Zstack/Zwe-ce/Z1/Z2`.
 
-Do not claim `.mpr` production readiness until a lab EIS `.mpr` file is tested.
+Each circuit fit is capped at 5,000 function evaluations. GUI progress and cooperative cancel operate between individual circuits.
 
 ## Run Commands
 

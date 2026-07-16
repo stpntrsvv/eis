@@ -82,8 +82,8 @@ flowchart LR
 > [!success] Уже можно считать рабочим релизным контуром
 > Для текстовых файлов и BioLogic `.mpt`: загрузка, batch, KK-check, auto-fit, Pro mode, manual bounds, plots, diagnostics, export, localization, help guide, Obsidian docs.
 
-> [!warning] Главный незакрытый риск
-> Реальный лабораторный BioLogic EIS `.mpr` ещё не валидирован. Loader есть через `galvani`, но production-ready статус для `.mpr` нельзя честно заявлять без реального файла.
+> [!warning] Граница валидации `.mpr`
+> Реальный лабораторный BioLogic EIS `.mpr` с одним sweep и каналом `Z` успешно прочитан и fitted. Дополнительная валидация всё ещё нужна для multi-cycle файлов и каналов `Zce/Zstack/Zwe-ce/Z1/Z2`.
 
 ## Быстрый Запуск
 

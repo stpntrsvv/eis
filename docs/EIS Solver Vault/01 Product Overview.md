@@ -37,7 +37,7 @@ For an advanced user:
 
 ## What Is Not Yet In Production Scope
 
-- Real lab validation of BioLogic EIS `.mpr`.
+- Broad lab validation of multi-cycle and multi-channel BioLogic EIS `.mpr` files.
 - Formal pytest suite.
 - Packaged executable smoke on a clean machine.
 - Shared cloud/preset library.
@@ -69,4 +69,3 @@ mindmap
       OCV
       Reports
 ```
-

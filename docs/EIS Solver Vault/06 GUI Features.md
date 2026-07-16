@@ -17,6 +17,7 @@ The GUI has:
 - Pro mode;
 - English/Russian language switch;
 - Help/About guide.
+- draggable splitters for resizing controls, tables, log, plots, and Parser details.
 
 ## GUI Layout
 
@@ -72,4 +73,10 @@ Data contracts remain language-stable:
 
 Fitting happens in `FitWorker` on a `QThread`.
 
-Cancel is cooperative: it takes effect after the current file/fit step finishes.
+Progress and log output update after every circuit. Cancel is cooperative and takes effect after the current circuit finishes.
+
+Every nonlinear circuit fit has a finite 5,000-evaluation optimizer budget, so a non-identifiable model cannot use the upstream 100,000-evaluation default.
+
+## Resizable Panels
+
+The main divider between controls/tables and plot tabs is draggable. Inside the left side, Datasets, dataset table, model-results table, and Log have independent vertical splitter handles. The Parser tab also has a draggable divider between detected columns and metadata.

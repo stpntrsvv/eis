@@ -75,11 +75,15 @@ def main():
                 f"[{result.status:<4}] {result.circuit_string:40} "
                 f"fit={result.mean_fit_error:.3f}% "
                 f"bic={result.bic:.2f} "
+                f"time={result.elapsed_seconds:.3f}s "
                 f"max_param_error={result.max_param_error:.1f}% "
                 f"flags={','.join(result.flags) if result.flags else '-'}"
             )
         else:
-            print(f"[FAIL] {result.circuit_string:40} {result.error_message}")
+            print(
+                f"[{result.status}] {result.circuit_string:40} "
+                f"time={result.elapsed_seconds:.3f}s {result.error_message}"
+            )
 
     best = choose_best_result(results)
     print("\n=== Best circuit ===")

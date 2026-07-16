@@ -100,4 +100,5 @@ The Lin-KK check reconstructs the spectrum with a fixed distribution of RC relax
 - Kramers-Kronig validation uses the practical `impedance.py` Lin-KK implementation, not a full formal integral transform.
 - No formal physical model priors beyond bounds and flags.
 - No automatic rejection of all over-parameterized models beyond BIC/flags.
-- BioLogic `.mpr` EIS needs real lab validation.
+- BioLogic `.mpr` is validated on one real single-sweep `Z` file; multi-cycle and additional-channel coverage remains open.
+- Each circuit fit has a 5,000-function-evaluation production budget and practical `1e-9` optimizer tolerances.

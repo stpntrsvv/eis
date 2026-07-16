@@ -25,6 +25,8 @@ This page records what has been validated so far and what should become formal t
 - GUI offscreen load confirmed dataset `KK` column and `kk_check_rows()`.
 - PyInstaller folder build completed with `eis_app.spec`.
 - Packaged exe launch smoke: `dist\eis_qt\eis_qt.exe` started and stayed alive for 8 seconds.
+- Real single-sweep BioLogic `.mpr` with 61 unique frequencies loaded and fitted successfully.
+- Full 17-circuit MPR CLI run completed in about 4.8 seconds in the macOS diagnostic environment after adding the optimizer budget.
 
 ## Known Best Test Result
 
@@ -83,7 +85,7 @@ Before giving the app to other users:
 2. Run GUI smoke.
 3. Test export folder permissions.
 4. Test clean-machine startup.
-5. Validate real BioLogic EIS `.mpr`.
+5. Validate additional multi-cycle and multi-channel BioLogic EIS `.mpr` files.
 6. Build PyInstaller executable.
 7. Confirm `PySide6`, `matplotlib`, `galvani`, `openpyxl`, `impedance` are included.
 

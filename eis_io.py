@@ -367,14 +367,39 @@ def imaginary_to_z_imag(values, mode: str):
 
 
 def clean_dataset(dataset: EisDataset) -> EisDataset:
-    mask = np.isfinite(dataset.frequencies) & np.isfinite(dataset.z.real) & np.isfinite(dataset.z.imag)
+    raw_point_count = len(dataset.frequencies)
+    finite_mask = np.isfinite(dataset.frequencies) & np.isfinite(dataset.z.real) & np.isfinite(dataset.z.imag)
+    nonpositive_count = int(np.sum(finite_mask & (np.asarray(dataset.frequencies) <= 0)))
+    mask = finite_mask & (np.asarray(dataset.frequencies) > 0)
     frequencies = np.asarray(dataset.frequencies[mask], dtype=float)
     z_values = np.asarray(dataset.z[mask], dtype=complex)
 
     if len(frequencies) == 0:
-        raise ValueError(f"No finite EIS rows found in {dataset.file_path}")
+        raise ValueError(f"No finite positive-frequency EIS rows found in {dataset.file_path}")
+
+    unique_frequencies, inverse, counts = np.unique(frequencies, return_inverse=True, return_counts=True)
+    duplicate_groups = int(np.sum(counts > 1))
+    duplicate_points = int(np.sum(counts - 1))
+    if duplicate_points:
+        aggregated = np.empty(len(unique_frequencies), dtype=complex)
+        for index in range(len(unique_frequencies)):
+            group = z_values[inverse == index]
+            aggregated[index] = np.median(group.real) + 1j * np.median(group.imag)
+        frequencies = unique_frequencies
+        z_values = aggregated
 
     order = np.argsort(frequencies)[::-1]
     dataset.frequencies = frequencies[order]
     dataset.z = z_values[order]
+    dataset.metadata.update(
+        {
+            "raw_point_count": raw_point_count,
+            "fit_point_count": len(dataset.frequencies),
+            "dropped_nonfinite_points": int(raw_point_count - np.sum(finite_mask)),
+            "dropped_nonpositive_frequency_points": nonpositive_count,
+            "duplicate_frequency_groups": duplicate_groups,
+            "aggregated_duplicate_points": duplicate_points,
+            "duplicate_aggregation": "median_complex_by_exact_frequency" if duplicate_points else "none",
+        }
+    )
     return dataset
