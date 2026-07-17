@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "datasets": [
+    {
+      "id": "zenodo_15422339_21700_cells",
+      "title": "EIS data of 54 21700 cells",
+      "record_url": "https://zenodo.org/records/15422339",
+      "doi": "10.5281/zenodo.15422339",
+      "version": "1.0.0",
+      "license": "CC-BY-4.0",
+      "expected_files": 54,
+      "downloaded_utc": "2026-07-17",
+      "archive_sha256": "AEA54ED657CA2014C930EC9F83A6CA93007A85786A013E7BBA70AE3B6625EEE4",
+      "purpose": "Повторяемость выбора модели и параметров на однотипных NMC811-ячейках при SOC 30%."
+    },
+    {
+      "id": "zenodo_15536917_lg_mj1_cathode",
+      "title": "INR18650-LG-3500-MJ1 Cathode EIS Raw Data",
+      "record_url": "https://zenodo.org/records/15536917",
+      "version": "v1",
+      "license": "CC-BY-4.0",
+      "expected_files": 72,
+      "downloaded_utc": "2026-07-17",
+      "archive_sha256": "9300B03FDF068F6BBDCCEE919A187EBC8F7A471964AD477E6C1C43E41E14CA84",
+      "purpose": "Устойчивость пакетного анализа и плавность результата по SOC при заряде и разряде."
+    },
+    {
+      "id": "zenodo_19608839_lipo_multimodal",
+      "title": "Investigation of Electrical and Acoustic Impedance with Volumetric Deformation of a Li-ion Cell Under Varying State of Charge",
+      "record_url": "https://zenodo.org/records/19608839",
+      "doi": "10.5281/zenodo.19608839",
+      "version": "v2",
+      "license": "CC-BY-4.0",
+      "downloaded_files": 45,
+      "downloaded_utc": "2026-07-17",
+      "purpose": "Переносимость на Li-polymer pouch, SOC-серии заряда/разряда и приборный CSV с metadata-преамбулой."
+    },
+    {
+      "id": "zenodo_17746533_pouch_temperature",
+      "title": "Detailed characterization of a large commercial Li-ion pouch cell, Part 1",
+      "record_url": "https://zenodo.org/records/17746533",
+      "doi": "10.5281/zenodo.17746533",
+      "license": "CC-BY-4.0",
+      "downloaded_files": 11,
+      "downloaded_utc": "2026-07-17",
+      "archive_sha256": "88A30B7138C2D6C69794D60454DAB0BBC5FFC34BECEA2915EDDD6B54830E2229",
+      "purpose": "Переносимость на Zahner TXT, малое сопротивление большой pouch-ячейки и температурную серию 0–45 °C."
+    },
+    {
+      "id": "zenodo_5682615_peo_ktfsi",
+      "title": "PEO-based electrolytes for solid-state potassium metal batteries",
+      "record_url": "https://zenodo.org/records/5682615",
+      "doi": "10.5281/zenodo.5682615",
+      "license": "CC-BY-4.0",
+      "downloaded_files": 6,
+      "downloaded_utc": "2026-07-17",
+      "purpose": "Проверка переноса за пределы Li-ion и честного отказа, когда опубликованы Re/Im по циклам, но отсутствует частотная колонка."
+    }
+  ]
+}

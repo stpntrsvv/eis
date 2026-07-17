@@ -1,0 +1,6 @@
+file,soc,direction
+../raw/zenodo_15536917_lg_mj1_cathode/files/08i_nmc_charge_25t_000_0001_SOC00eis.csv,0,charge
+../raw/zenodo_15536917_lg_mj1_cathode/files/08i_nmc_charge_25t_000_0002_SOC01eis.csv,1,charge
+../raw/zenodo_15536917_lg_mj1_cathode/files/08i_nmc_charge_25t_000_0003_SOC02eis.csv,2,charge
+../raw/zenodo_15536917_lg_mj1_cathode/files/08i_nmc_charge_25t_000_0004_SOC03eis.csv,3,charge
+../raw/zenodo_15536917_lg_mj1_cathode/files/08i_nmc_charge_25t_000_0005_SOC04eis.csv,4,charge

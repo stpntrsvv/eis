@@ -1,10 +1,10 @@
-# Pro Mode And Presets
+# Расширенный режим и пресеты
 
 Pro mode is for users who know what physical model they want.
 
 It is hidden by default so normal users can just load data and run auto-fit.
 
-## Pro Mode Contains
+## Возможности расширенного режима
 
 - Interface preset menu.
 - Transport preset menu.
@@ -14,7 +14,7 @@ It is hidden by default so normal users can just load data and run auto-fit.
 - Initial/Lower/Upper parameter table.
 - Local preset save/load/delete.
 
-## Manual Circuit Syntax
+## Синтаксис ручной схемы
 
 Examples:
 
@@ -32,7 +32,7 @@ Rules:
 - Supported elements: `R`, `C`, `CPE`, `W`, `Wo`, `Ws`, `L`.
 - Index suffixes matter: `R0`, `R1`, `CPE0`, `CPE1`.
 
-## Manual Bounds Flow
+## Настройка начальных значений и границ
 
 ```mermaid
 sequenceDiagram
@@ -52,7 +52,7 @@ sequenceDiagram
     GUI->>Store: pro_presets.json
 ```
 
-## Preset Storage
+## Хранение пресетов
 
 Primary Windows path:
 
@@ -68,9 +68,8 @@ Fallback:
 
 The app checks real write access before choosing the config directory.
 
-## Why Local Presets
+## Почему пресеты хранятся локально
 
 Local presets keep user-specific lab habits off git and out of shared releases.
 
 If preset sharing becomes important later, add explicit import/export for preset JSON files.
-

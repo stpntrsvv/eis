@@ -1,8 +1,8 @@
-# GUI Features
+# Возможности интерфейса
 
 The active GUI is `eis_qt.py`, based on PySide6.
 
-## Main Surface
+## Главное окно
 
 The GUI has:
 
@@ -17,9 +17,10 @@ The GUI has:
 - Pro mode;
 - English/Russian language switch;
 - Help/About guide.
+- imported reliable-inference decision tab;
 - draggable splitters for resizing controls, tables, log, plots, and Parser details.
 
-## GUI Layout
+## Компоновка интерфейса
 
 ```mermaid
 flowchart LR
@@ -34,9 +35,21 @@ flowchart LR
     Right --> KKCheck[KK Check]
     Right --> Parser
     Right --> BestParams[Best Parameters]
+    Right --> ReliableDecision[Reliable Decision]
 ```
 
-## Menus
+## Надёжная рекомендация
+
+`File -> Import reliable result...` загружает полный JSON от
+`eis_inference.py` и связывает его с уже открытым EIS-файлом. GUI не повторяет
+bootstrap, BIC-gate или Lin-KK decision logic.
+
+Вкладка `Reliable Decision` показывает семейную рекомендацию, честное
+`indistinguishable` вместо неподтверждённой `W/Wo/Ws`, причину отказа,
+следующее действие и calibrated-gate details. При смене канала решение
+сбрасывается. [Smoke-отчёт](../../../validation_data/reports/2026-07-17-gui-reliable-decision.md).
+
+## Меню
 
 | Menu | Purpose |
 |---|---|
@@ -45,7 +58,7 @@ flowchart LR
 | View | language switching |
 | Help | About / Guide |
 
-## Localization
+## Перевод интерфейса
 
 UI language is switched at runtime:
 
@@ -59,7 +72,7 @@ Data contracts remain language-stable:
 - CSV/XLSX column names stay stable;
 - sheet names stay stable.
 
-## About / Guide
+## Справка и руководство
 
 `Help -> About / Guide` opens a built-in guide covering:
 
@@ -69,7 +82,7 @@ Data contracts remain language-stable:
 - diagnostics;
 - file formats.
 
-## Responsiveness
+## Работа без зависаний
 
 Fitting happens in `FitWorker` on a `QThread`.
 
@@ -77,6 +90,6 @@ Progress and log output update after every circuit. Cancel is cooperative and ta
 
 Every nonlinear circuit fit has a finite 5,000-evaluation optimizer budget, so a non-identifiable model cannot use the upstream 100,000-evaluation default.
 
-## Resizable Panels
+## Изменяемые панели
 
 The main divider between controls/tables and plot tabs is draggable. Inside the left side, Datasets, dataset table, model-results table, and Log have independent vertical splitter handles. The Parser tab also has a draggable divider between detected columns and metadata.

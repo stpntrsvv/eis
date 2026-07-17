@@ -125,9 +125,21 @@ def dataset_from_structured_array(file_path: str, data, source_format: str, meta
 
 
 def load_text_eis_file(file_path: str, channel: str | None = None) -> EisDataset:
+    if "readme" in os.path.basename(file_path).lower():
+        raise ValueError(f"{file_path} is a README/metadata file, not an EIS spectrum.")
     table = try_load_named_text_table(file_path)
     if table is not None:
         return table
+    table = try_load_embedded_eis_table(file_path)
+    if table is not None:
+        return table
+    with open(file_path, "r", encoding="utf-8-sig", errors="replace") as handle:
+        header_probe = "".join(handle.readlines()[:5]).lower()
+    if "cycle number" in header_probe and "frequency" not in header_probe:
+        raise ValueError(
+            f"{file_path} contains cycle-indexed impedance values but no frequency column; "
+            "frequency reconstruction would be speculative."
+        )
 
     data_lines = []
     with open(file_path, "r", encoding="utf-8", errors="replace") as file:
@@ -140,6 +152,17 @@ def load_text_eis_file(file_path: str, channel: str | None = None) -> EisDataset
         raise ValueError(f"Could not find three numeric columns in {file_path}")
 
     data = np.array(data_lines, dtype=float)
+    candidate_frequency = data[:, 0]
+    finite_frequency = candidate_frequency[np.isfinite(candidate_frequency)]
+    differences = np.diff(finite_frequency)
+    monotonic_fraction = max(
+        float(np.mean(differences > 0)) if len(differences) else 0.0,
+        float(np.mean(differences < 0)) if len(differences) else 0.0,
+    )
+    if len(np.unique(finite_frequency[finite_frequency > 0])) < 8 or monotonic_fraction < 0.8:
+        raise ValueError(
+            f"Numeric text in {file_path} does not contain a credible monotonic frequency column."
+        )
     z_imag = imaginary_to_z_imag(data[:, 2], "auto")
     return clean_dataset(
         EisDataset(
@@ -157,20 +180,78 @@ def load_text_eis_file(file_path: str, channel: str | None = None) -> EisDataset
     )
 
 
+def try_load_embedded_eis_table(file_path: str) -> EisDataset | None:
+    """Read vendor exports whose actual EIS table follows a metadata preamble."""
+    with open(file_path, "r", encoding="utf-8-sig", errors="replace") as handle:
+        lines = handle.readlines()
+    for line_index, line in enumerate(lines):
+        for delimiter in ("\t", ",", ";"):
+            parts = [part.strip() for part in line.strip().split(delimiter)]
+            normalized = [normalize_column_name(part) for part in parts]
+            frequency_index = next((i for i, name in enumerate(normalized) if
+                                    name in {normalize_column_name(alias) for alias in FREQUENCY_ALIASES}), None)
+            real_index = next((i for i, name in enumerate(normalized) if
+                               name in {normalize_column_name(alias) for alias in REAL_ALIASES}), None)
+            negative_imag_index = next((i for i, name in enumerate(normalized) if
+                                        name in {normalize_column_name(alias) for alias in NEG_IMAG_ALIASES}), None)
+            raw_imag_index = next((i for i, name in enumerate(normalized) if
+                                   name in {normalize_column_name(alias) for alias in RAW_IMAG_ALIASES}), None)
+            imag_index = negative_imag_index if negative_imag_index is not None else raw_imag_index
+            if frequency_index is None or real_index is None or imag_index is None:
+                continue
+            rows = []
+            for data_line in lines[line_index + 1:]:
+                fields = [field.strip() for field in data_line.strip().split(delimiter)]
+                if len(fields) <= max(frequency_index, real_index, imag_index):
+                    if rows:
+                        break
+                    continue
+                try:
+                    rows.append((float(fields[frequency_index]), float(fields[real_index]), float(fields[imag_index])))
+                except ValueError:
+                    if rows:
+                        break
+            if not rows:
+                continue
+            data = np.asarray(rows, dtype=float)
+            mode = "negative_imaginary" if negative_imag_index is not None else "raw_imaginary"
+            return clean_dataset(EisDataset(
+                file_path=file_path,
+                frequencies=data[:, 0],
+                z=data[:, 1] + 1j * imaginary_to_z_imag(data[:, 2], mode),
+                source_format="embedded_named_text_table",
+                columns=parts,
+                metadata={
+                    "embedded_header_line": line_index + 1,
+                    "delimiter": delimiter,
+                    "frequency_column": parts[frequency_index],
+                    "real_column": parts[real_index],
+                    "imaginary_column": parts[imag_index],
+                    "imaginary_mode": mode,
+                    "selected_channel": "Z",
+                    "available_channels": ["Z"],
+                },
+            ))
+    return None
+
+
 def try_load_named_text_table(file_path: str):
     for delimiter in ("\t", ",", ";", None):
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                data = np.genfromtxt(
-                    file_path,
-                    names=True,
-                    delimiter=delimiter,
-                    dtype=float,
-                    encoding="utf-8",
-                    invalid_raise=False,
-                    autostrip=True,
-                )
+                kwargs = {
+                    "delimiter": delimiter,
+                    "dtype": float,
+                    "encoding": "utf-8",
+                    "invalid_raise": False,
+                    "autostrip": True,
+                }
+                explicit_names = leading_unnamed_column_names(file_path, delimiter)
+                if explicit_names:
+                    data = np.genfromtxt(file_path, names=explicit_names, skip_header=1, **kwargs)
+                else:
+                    data = np.genfromtxt(file_path, names=True, **kwargs)
         except Exception:
             continue
 
@@ -188,6 +269,23 @@ def try_load_named_text_table(file_path: str):
         except Exception:
             continue
     return None
+
+
+def leading_unnamed_column_names(file_path: str, delimiter: str | None) -> list[str] | None:
+    """Preserve pandas-style CSV index columns without shifting EIS data."""
+    if delimiter not in {",", ";", "\t"}:
+        return None
+    try:
+        with open(file_path, "r", encoding="utf-8-sig", errors="replace") as handle:
+            header = handle.readline().strip("\r\n")
+    except OSError:
+        return None
+    parts = [part.strip() for part in header.split(delimiter)]
+    if not parts or parts[0]:
+        return None
+    parts[0] = "index"
+    parts = [f"minus{part[1:]}" if part.startswith("-") else part for part in parts]
+    return [part or f"unnamed_{index}" for index, part in enumerate(parts)]
 
 
 def detect_impedance_channels(names: list[str]) -> list[ImpedanceChannel]:
@@ -264,6 +362,8 @@ FREQUENCY_ALIASES = (
     "f/hz",
     "freq",
     "frequency",
+    "f",
+    "frequency (hz)",
 )
 
 REAL_ALIASES = (
@@ -274,7 +374,12 @@ REAL_ALIASES = (
     "zre",
     "realz",
     "real",
+    "real impedance",
+    "realohm",
+    "zreal",
     "re",
+    "impedance' (Ω)",
+    "impedance' (ohm)",
 )
 
 NEG_IMAG_ALIASES = (
@@ -284,6 +389,8 @@ NEG_IMAG_ALIASES = (
     "minusimzohm",
     "negimzohm",
     "-im",
+    "-zimag",
+    "minuszimag",
 )
 
 RAW_IMAG_ALIASES = (
@@ -294,7 +401,12 @@ RAW_IMAG_ALIASES = (
     "zim",
     "imagz",
     "imaginary",
+    "imaginary impedance",
+    "imagohm",
+    "zimag",
     "im",
+    "impedance'' (Ω)",
+    "impedance'' (ohm)",
 )
 
 
@@ -343,6 +455,7 @@ def choose_imaginary_column_from_aliases(names, negative_aliases, raw_aliases) -
 
 def normalize_column_name(name: str) -> str:
     normalized = str(name).strip().lower()
+    normalized = normalized.replace("ω", "ohm")
     normalized = normalized.replace("ω", "ohm")
     normalized = normalized.replace("Ω", "ohm")
     normalized = normalized.replace("Ω", "ohm")

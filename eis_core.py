@@ -49,6 +49,20 @@ INDUCTIVE_CIRCUITS = [
     "L0-R0-p(R1-p(R2,CPE1),CPE0)",
 ]
 
+INDUCTIVE_DIFFUSION_CIRCUITS = [
+    "L0-R0-p(R1,CPE0)-Wo0",
+    "L0-R0-p(R1,CPE0)-Ws0",
+    "L0-R0-p(R1,CPE0)-W0",
+]
+
+CIRCUIT_FAMILIES = {
+    **{circuit: "ideal_rc" for circuit in IDEAL_RC_CIRCUITS},
+    **{circuit: "interface" for circuit in INTERFACE_CIRCUITS},
+    **{circuit: "diffusion" for circuit in DIFFUSION_CIRCUITS},
+    **{circuit: "inductive" for circuit in INDUCTIVE_CIRCUITS},
+    **{circuit: "inductive_diffusion" for circuit in INDUCTIVE_DIFFUSION_CIRCUITS},
+}
+
 SIMPLE_CIRCUITS = IDEAL_RC_CIRCUITS + INTERFACE_CIRCUITS
 ADVANCED_CIRCUITS = DIFFUSION_CIRCUITS + INDUCTIVE_CIRCUITS
 BASIC_CIRCUITS = SIMPLE_CIRCUITS + DIFFUSION_CIRCUITS
@@ -59,11 +73,80 @@ GAVRIK_CIRCUITS = SIMPLE_CIRCUITS
 WARBURG_CIRCUITS = DIFFUSION_CIRCUITS
 
 
+def circuit_family(circuit_string: str) -> str:
+    """Return the declared model family without guessing from circuit syntax."""
+    return CIRCUIT_FAMILIES.get(circuit_string, "unclassified")
+
+
+def family_bic_evidence(fits, *, bic_window: float = 2.0) -> dict:
+    """Aggregate admissible fits in a BIC window around the statistical best."""
+    admissible = [
+        fit for fit in fits
+        if fit.success and fit.status != "BAD" and np.isfinite(fit.bic)
+    ]
+    if not admissible:
+        return {
+            "bic_window": float(bic_window), "supported_topologies": [],
+            "supported_families": [], "family_evidence": [],
+            "best_bic_by_family": {},
+            "diffusion_family_delta_bic": None,
+        }
+    best_bic = min(fit.bic for fit in admissible)
+    supported = [
+        fit for fit in admissible
+        if fit.bic <= best_bic + max(0.0, float(bic_window))
+    ]
+    families = {}
+    for fit in supported:
+        family = circuit_family(fit.circuit_string)
+        families.setdefault(family, []).append(fit)
+    evidence = []
+    for family, members in families.items():
+        weights = [float(np.exp(-0.5 * (fit.bic - best_bic))) for fit in members]
+        evidence.append({
+            "family": family,
+            "topologies": [fit.circuit_string for fit in sorted(members, key=lambda item: item.bic)],
+            "summed_bic_weight": float(sum(weights)),
+        })
+    evidence.sort(key=lambda item: (-item["summed_bic_weight"], item["family"]))
+    best_bic_by_family = {}
+    for fit in admissible:
+        family = circuit_family(fit.circuit_string)
+        best_bic_by_family[family] = min(
+            float(fit.bic), best_bic_by_family.get(family, float("inf"))
+        )
+    diffusion_bic = best_bic_by_family.get("inductive_diffusion")
+    competing_bics = [
+        bic for family, bic in best_bic_by_family.items()
+        if family != "inductive_diffusion"
+    ]
+    diffusion_family_delta_bic = (
+        float(min(competing_bics) - diffusion_bic)
+        if diffusion_bic is not None and competing_bics else None
+    )
+    return {
+        "bic_window": float(bic_window),
+        "best_bic": float(best_bic),
+        "supported_topologies": [fit.circuit_string for fit in sorted(supported, key=lambda item: item.bic)],
+        "supported_families": [item["family"] for item in evidence],
+        "family_evidence": evidence,
+        "best_bic_by_family": best_bic_by_family,
+        "diffusion_family_delta_bic": diffusion_family_delta_bic,
+    }
+
+
 @dataclass(frozen=True)
 class DatasetScale:
     r0: float
     r_transfer: float
     capacitance: float
+
+
+@dataclass(frozen=True)
+class CircuitRouting:
+    circuits: tuple[str, ...]
+    families: tuple[str, ...]
+    features: dict
 
 
 @dataclass
@@ -81,6 +164,9 @@ class FitResult:
     flags: tuple[str, ...] = ()
     error_message: str = ""
     elapsed_seconds: float = 0.0
+    starts_attempted: int = 1
+    starts_succeeded: int = 0
+    best_start_index: int = 0
 
 
 @dataclass
@@ -138,12 +224,124 @@ def estimate_dataset_scale(frequencies, z_data) -> DatasetScale:
     return DatasetScale(r0=r0, r_transfer=r_transfer, capacitance=capacitance)
 
 
+def route_circuit_candidates(frequencies, z_data) -> CircuitRouting:
+    """Select physically plausible circuit families from coarse spectral shape.
+
+    This is deliberately a permissive gate, not a model verdict. Statistical
+    selection and identifiability checks still decide between the candidates.
+    """
+    frequencies = np.asarray(frequencies, dtype=float)
+    z_data = np.asarray(z_data, dtype=complex)
+    if len(frequencies) != len(z_data) or len(frequencies) < 3:
+        raise ValueError("Circuit routing requires at least three aligned EIS points.")
+
+    order = np.argsort(frequencies)
+    edge_count = min(len(order), max(5, int(np.ceil(len(order) * 0.2))))
+    high_imag = z_data.imag[order[-edge_count:]]
+    low_z = z_data[order[:edge_count]]
+    magnitude_scale = max(float(np.median(np.abs(z_data))), 1e-12)
+    imag_threshold = magnitude_scale * 5e-3
+
+    high_positive_count = int(np.count_nonzero(high_imag > imag_threshold))
+    inductive = (
+        high_positive_count >= max(3, int(np.ceil(edge_count * 0.5)))
+        and float(np.max(high_imag)) > magnitude_scale * 2e-2
+    )
+
+    low_negative_count = int(np.count_nonzero(low_z.imag < -imag_threshold))
+    low_real_span = float(np.ptp(low_z.real))
+    low_imag_span = float(np.ptp(low_z.imag))
+    diffusion_like = (
+        low_negative_count >= max(3, int(np.ceil(edge_count * 0.6)))
+        and low_real_span > magnitude_scale * 2e-2
+        and low_imag_span > magnitude_scale * 2e-2
+    )
+
+    families = ["simple"]
+    circuits = list(SIMPLE_CIRCUITS)
+    # In v1, a strong inductive loop is handled first. Admitting every
+    # diffusion circuit at the same tier recreated the old exhaustive
+    # 17-model search and made a capacitive low-frequency tail look like
+    # sufficient Warburg evidence. Diffusion remains visible as a feature and
+    # can be promoted by a later residual-driven tier.
+    if diffusion_like and not inductive:
+        families.append("diffusion")
+        circuits.extend(DIFFUSION_CIRCUITS)
+    if inductive:
+        families.append("inductive")
+        circuits.extend(INDUCTIVE_CIRCUITS)
+
+    return CircuitRouting(
+        circuits=tuple(dict.fromkeys(circuits)),
+        families=tuple(families),
+        features={
+            "edge_point_count": edge_count,
+            "high_frequency_positive_imag_count": high_positive_count,
+            "high_frequency_inductive": inductive,
+            "low_frequency_negative_imag_count": low_negative_count,
+            "low_frequency_diffusion_like": diffusion_like,
+            "imaginary_detection_threshold_ohm": imag_threshold,
+        },
+    )
+
+
+def route_residual_candidates(frequencies, z_data, fitted: FitResult, admitted_families) -> CircuitRouting:
+    """Promote second-tier mechanisms when the first-tier residual is structured."""
+    if not fitted.success or fitted.model is None:
+        return CircuitRouting((), (), {"reason": "no_successful_first_tier_model"})
+
+    frequencies = np.asarray(frequencies, dtype=float)
+    z_data = np.asarray(z_data, dtype=complex)
+    predicted = np.asarray(fitted.model.predict(frequencies), dtype=complex)
+    relative = (z_data - predicted) / np.maximum(np.abs(z_data), 1e-30)
+    order = np.argsort(frequencies)
+    edge_count = min(len(order), max(5, int(np.ceil(len(order) * 0.2))))
+    low = relative[order[:edge_count]]
+    middle = relative[order[edge_count:-edge_count]]
+    if len(middle) == 0:
+        middle = relative
+
+    low_error = float(np.mean(np.abs(low)))
+    middle_error = float(np.median(np.abs(middle)))
+    coherence = float(abs(np.mean(low)) / max(np.mean(np.abs(low)), 1e-30))
+    structured_low_frequency = (
+        low_error >= max(0.03, middle_error * 1.5)
+        and coherence >= 0.6
+    )
+
+    circuits = []
+    families = []
+    admitted = set(admitted_families)
+    if structured_low_frequency and "inductive" in admitted:
+        families.append("inductive_diffusion")
+        circuits.extend(INDUCTIVE_DIFFUSION_CIRCUITS)
+
+    return CircuitRouting(
+        circuits=tuple(circuits),
+        families=tuple(families),
+        features={
+            "edge_point_count": edge_count,
+            "low_frequency_mean_relative_error": low_error,
+            "middle_median_relative_error": middle_error,
+            "low_frequency_residual_coherence": coherence,
+            "structured_low_frequency_residual": structured_low_frequency,
+        },
+    )
+
+
+def resistance_lower_bound(scale: DatasetScale) -> float:
+    positive_scales = [abs(value) for value in (scale.r0, scale.r_transfer) if np.isfinite(value) and value != 0]
+    characteristic = min(positive_scales) if positive_scales else 1.0
+    return max(1e-12, min(1e-3, characteristic * 1e-4))
+
+
 def build_bounds_and_guess(circuit_string: str, scale: DatasetScale):
     low_bounds = []
     high_bounds = []
     initial_guess = []
     r_idx = 0
     cpe_idx = 0
+    r_lower = resistance_lower_bound(scale)
 
     for element in extract_circuit_elements(circuit_string):
         match = re.match(r"([a-zA-Z]+)", element)
@@ -154,8 +352,8 @@ def build_bounds_and_guess(circuit_string: str, scale: DatasetScale):
 
         if element_type == "R":
             value = scale.r0 if r_idx == 0 else scale.r_transfer / max(1, r_idx)
-            initial_guess.append(value)
-            low_bounds.append(1e-3)
+            initial_guess.append(max(abs(value), r_lower * 10))
+            low_bounds.append(r_lower)
             high_bounds.append(1e8)
             r_idx += 1
         elif element_type == "CPE":
@@ -169,12 +367,12 @@ def build_bounds_and_guess(circuit_string: str, scale: DatasetScale):
             low_bounds.append(1e-10)
             high_bounds.append(10.0)
         elif element_type in {"Wo", "Ws"}:
-            initial_guess.extend([scale.r_transfer * 1.5, 5.0])
-            low_bounds.extend([1e-2, 1e-3])
+            initial_guess.extend([max(abs(scale.r_transfer) * 1.5, r_lower * 10), 5.0])
+            low_bounds.extend([r_lower, 1e-3])
             high_bounds.extend([1e7, 1e5])
         elif element_type == "W":
-            initial_guess.append(scale.r_transfer * 0.5)
-            low_bounds.append(1e-2)
+            initial_guess.append(max(abs(scale.r_transfer) * 0.5, r_lower * 10))
+            low_bounds.append(r_lower)
             high_bounds.append(1e7)
         elif element_type == "L":
             initial_guess.append(1e-6)
@@ -215,6 +413,40 @@ def apply_parameter_overrides(circuit_string: str, low_bounds, high_bounds, init
     return low_bounds, high_bounds, initial_guess
 
 
+def build_multistart_guesses(
+    initial_guess,
+    low_bounds,
+    high_bounds,
+    starts: int,
+    seed: int = 0,
+) -> list[list[float]]:
+    """Create deterministic, bounded starts around the geometry-based guess."""
+    starts = max(1, int(starts))
+    low = np.asarray(low_bounds, dtype=float)
+    high = np.asarray(high_bounds, dtype=float)
+    base = np.clip(np.asarray(initial_guess, dtype=float), low + 1e-12, high - 1e-12)
+    guesses = [base.tolist()]
+    if starts == 1:
+        return guesses
+
+    rng = np.random.default_rng(int(seed))
+    for start_index in range(1, starts):
+        candidate = base.copy()
+        for index, (value, lower, upper) in enumerate(zip(base, low, high)):
+            if lower > 0 and value > 0 and upper / lower > 10:
+                # Stratified log perturbation avoids clustering every restart at
+                # the same local minimum while staying near a plausible scale.
+                direction = -1.0 if start_index % 2 else 1.0
+                magnitude = 0.35 + 1.65 * rng.random()
+                log_value = np.log10(value) + direction * magnitude
+                candidate[index] = 10 ** np.clip(log_value, np.log10(lower), np.log10(upper))
+            else:
+                fraction = (start_index + rng.random()) / starts
+                candidate[index] = lower + fraction * (upper - lower)
+        guesses.append(np.clip(candidate, low + 1e-12, high - 1e-12).tolist())
+    return guesses
+
+
 def fit_circuit(
     frequencies,
     z_data,
@@ -223,6 +455,8 @@ def fit_circuit(
     parameter_overrides=None,
     max_fit_evaluations: int = DEFAULT_MAX_FIT_EVALUATIONS,
     fit_tolerance: float = DEFAULT_FIT_TOLERANCE,
+    fit_restarts: int = 1,
+    restart_seed: int = 0,
 ) -> FitResult:
     started_at = time.monotonic()
     try:
@@ -230,28 +464,57 @@ def fit_circuit(
         low_bounds, high_bounds, guess = apply_parameter_overrides(
             circuit_string, low_bounds, high_bounds, guess, parameter_overrides
         )
-        safe_guess = np.clip(
+        guesses = build_multistart_guesses(
             guess,
-            np.array(low_bounds, dtype=float) + 1e-12,
-            np.array(high_bounds, dtype=float) - 1e-12,
-        ).tolist()
-
-        circuit = CustomCircuit(circuit_string, initial_guess=safe_guess)
-        circuit.fit(
-            frequencies,
-            z_data,
-            bounds=(low_bounds, high_bounds),
-            weight_by_modulus=True,
-            maxfev=int(max_fit_evaluations),
-            ftol=float(fit_tolerance),
-            xtol=float(fit_tolerance),
-            gtol=float(fit_tolerance),
+            low_bounds,
+            high_bounds,
+            starts=fit_restarts,
+            seed=restart_seed,
         )
+        successful_starts = []
+        start_errors = []
+        for start_index, safe_guess in enumerate(guesses):
+            try:
+                candidate = CustomCircuit(circuit_string, initial_guess=safe_guess)
+                candidate.fit(
+                    frequencies,
+                    z_data,
+                    bounds=(low_bounds, high_bounds),
+                    weight_by_modulus=True,
+                    maxfev=int(max_fit_evaluations),
+                    ftol=float(fit_tolerance),
+                    xtol=float(fit_tolerance),
+                    gtol=float(fit_tolerance),
+                )
+                predicted = candidate.predict(frequencies)
+                residuals = np.abs(z_data - predicted) / np.maximum(np.abs(z_data), 1e-30)
+                successful_starts.append((float(np.sum(residuals ** 2)), start_index, candidate, predicted))
+            except Exception as start_exc:
+                start_errors.append(f"start {start_index}: {start_exc}")
 
-        z_predicted = circuit.predict(frequencies)
+        if not successful_starts:
+            joined = "; ".join(start_errors)
+            budget_exhausted = any(
+                marker in joined.lower()
+                for marker in ("maximum number of function evaluations", "maxfev", "optimal parameters not found")
+            )
+            message = joined or "No multi-start fit succeeded."
+            if budget_exhausted:
+                message = f"Optimization budget exhausted ({max_fit_evaluations} evaluations per start): {message}"
+            return FitResult(
+                circuit_string=circuit_string,
+                success=False,
+                status="LIMIT" if budget_exhausted else "FAIL",
+                flags=("LIMIT:optimization_budget_exhausted",) if budget_exhausted else (),
+                error_message=message,
+                elapsed_seconds=time.monotonic() - started_at,
+                starts_attempted=len(guesses),
+                starts_succeeded=0,
+            )
+
+        rss_weighted, best_start_index, circuit, z_predicted = min(successful_starts, key=lambda item: item[0])
         relative_residuals = np.abs(z_data - z_predicted) / np.maximum(np.abs(z_data), 1e-30)
         mean_fit_error = float(np.mean(relative_residuals) * 100)
-        rss_weighted = float(np.sum(relative_residuals ** 2))
         n_params = len(circuit.parameters_)
         aic, bic = information_criteria(rss_weighted, n_observations=2 * len(frequencies), n_params=n_params)
 
@@ -285,6 +548,9 @@ def fit_circuit(
             status=status,
             flags=tuple(flags),
             elapsed_seconds=time.monotonic() - started_at,
+            starts_attempted=len(guesses),
+            starts_succeeded=len(successful_starts),
+            best_start_index=best_start_index,
         )
     except Exception as exc:
         message = str(exc)
@@ -301,6 +567,7 @@ def fit_circuit(
             flags=("LIMIT:optimization_budget_exhausted",) if budget_exhausted else (),
             error_message=message,
             elapsed_seconds=time.monotonic() - started_at,
+            starts_attempted=max(1, int(fit_restarts)),
         )
 
 
@@ -311,6 +578,8 @@ def fit_circuits(
     parameter_overrides_by_circuit=None,
     max_fit_evaluations: int = DEFAULT_MAX_FIT_EVALUATIONS,
     fit_tolerance: float = DEFAULT_FIT_TOLERANCE,
+    fit_restarts: int = 1,
+    restart_seed: int = 0,
     on_result=None,
     should_cancel=None,
 ) -> list[FitResult]:
@@ -328,6 +597,8 @@ def fit_circuits(
             parameter_overrides=overrides.get(circuit_string),
             max_fit_evaluations=max_fit_evaluations,
             fit_tolerance=fit_tolerance,
+            fit_restarts=fit_restarts,
+            restart_seed=restart_seed + len(results) * 10_007,
         )
         results.append(result)
         if on_result is not None:
@@ -427,18 +698,51 @@ def lin_kk_check(
         return KramersKronigResult(success=False, status="FAIL", flags=("FAIL:kk_error",), error_message=str(exc))
 
 
-def choose_best_result(results: Iterable[FitResult], max_param_error: float = 40.0) -> FitResult:
+DEFAULT_BIC_WINDOW = 2.0
+
+
+def choose_best_result(
+    results: Iterable[FitResult],
+    max_param_error: float = 40.0,
+    bic_window: float = DEFAULT_BIC_WINDOW,
+    allow_bad_fallback: bool = True,
+) -> FitResult:
+    """Choose a model by diagnostic tier, statistical support, then simplicity.
+
+    BIC differences smaller than ``bic_window`` are treated as insufficient
+    evidence for extra complexity. Within that statistically supported set,
+    simpler models outrank more complex ones and diagnostic status breaks the
+    remaining ties. A WARN model with decisively better BIC remains eligible;
+    BAD is only a compatibility fallback.
+    """
     successful = [result for result in results if result.success]
     if not successful:
         raise ValueError("No circuit fits succeeded.")
 
     candidates = [result for result in successful if result.status != "BAD"]
-    if not candidates:
-        candidates = [result for result in successful if result.max_param_error < max_param_error]
-    if not candidates:
-        candidates = successful
+    if not candidates and allow_bad_fallback:
+        bounded_bad = [result for result in successful if result.max_param_error < max_param_error]
+        candidates = bounded_bad or successful
+    elif not candidates:
+        raise ValueError("No reliable circuit fit found (all successful fits are BAD).")
 
-    return min(candidates, key=lambda result: (result.bic, result.n_params, result.mean_fit_error))
+    finite_bic = [result.bic for result in candidates if np.isfinite(result.bic)]
+    if finite_bic:
+        best_bic = min(finite_bic)
+        supported = [result for result in candidates if result.bic <= best_bic + max(0.0, float(bic_window))]
+    else:
+        supported = candidates
+
+    status_rank = {"OK": 0, "WARN": 1, "BAD": 2}
+    return min(
+        supported,
+        key=lambda result: (
+            result.n_params,
+            status_rank.get(result.status, 3),
+            result.bic,
+            result.mean_fit_error,
+        ),
+    )
 
 
 def information_criteria(rss: float, n_observations: int, n_params: int) -> tuple[float, float]:

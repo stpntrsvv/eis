@@ -6,7 +6,7 @@ tags:
 status: active
 ---
 
-# Chem Suite Philosophy
+# Принципы Chem Suite
 
 Эта страница фиксирует стиль будущей большой системы.
 
@@ -70,4 +70,3 @@ flowchart TD
 - Делать smoke tests перед каждым “релизным” состоянием.
 - Поддерживать человеческую документацию.
 - Держать AI-friendly handoff актуальным.
-

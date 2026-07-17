@@ -6,7 +6,7 @@ tags:
 status: active
 ---
 
-# Kramers-Kronig Validation
+# Проверка Крамерса—Кронига
 
 Эта страница фиксирует научный gate в EIS Solver: быструю проверку спектра на Kramers-Kronig consistency через библиотечный метод `impedance.validation.linKK`.
 
@@ -85,7 +85,7 @@ flowchart TD
 
 Важно: `WARN` не значит “данные плохие”. Это значит “посмотри глазами на KK Check, residuals, частотные края и протокол эксперимента”.
 
-## Что Значит Mu
+## Что означает `mu`
 
 `mu` — критерий из Lin-KK метода Schönleber et al., который помогает выбрать число RC-звеньев и не переобучить спектр. Если алгоритм не может достичь cutoff `mu <= 0.85` до `max_M`, это повод смотреть данные осторожнее.
 
@@ -143,7 +143,7 @@ flowchart TD
 
 Schönleber, M. et al. “A Method for Improving the Robustness of linear Kramers-Kronig Validity Tests.” Electrochimica Acta 131, 20-27 (2014). DOI: `10.1016/j.electacta.2014.01.034`.
 
-## Решение Для Продакшена
+## Принятое инженерное решение
 
 В EIS Solver KK-check считается gate качества данных, а не частью выбора лучшей схемы.
 

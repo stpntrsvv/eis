@@ -2,6 +2,7 @@ import csv
 from dataclasses import dataclass
 import json
 import os
+from pathlib import Path
 import sys
 import warnings
 
@@ -59,6 +60,7 @@ from eis_core import (
     parameter_names,
 )
 from eis_io import load_eis_file
+from eis_gui_decision import format_reliable_decision
 
 warnings.filterwarnings("ignore")
 
@@ -92,6 +94,7 @@ UI_TRANSLATIONS = {
         "Russian": "Русский",
         "Open EIS files": "Открыть EIS файлы",
         "Open folder": "Открыть папку",
+        "Import reliable result...": "Импорт reliable-результата...",
         "Run auto-fit": "Автофит",
         "Run selected presets": "Фит пресетов",
         "Run manual circuit": "Фит ручной схемы",
@@ -178,6 +181,10 @@ UI_TRANSLATIONS = {
         "Channel error": "Ошибка канала",
         "About EIS Solver": "О EIS Solver",
         "Close": "Закрыть",
+        "Reliable Decision": "Надёжный вывод",
+        "Inference result (*.json);;All files (*.*)": "Результат inference (*.json);;Все файлы (*.*)",
+        "Inference import error": "Ошибка импорта inference",
+        "Load the matching EIS dataset before importing its inference result.": "Сначала загрузите соответствующий EIS-спектр.",
     }
 }
 
@@ -382,6 +389,7 @@ class AnalysisCase:
     kk_result: KramersKronigResult | None = None
     results: list[FitResult] | None = None
     best_result: FitResult | None = None
+    inference_decision: dict | None = None
     error_message: str = ""
 
 
@@ -512,6 +520,9 @@ class EisQtApp(QMainWindow):
         self.open_folder_action = QAction("Open folder", self)
         self.open_folder_action.triggered.connect(self.open_folder)
 
+        self.import_inference_action = QAction("Import reliable result...", self)
+        self.import_inference_action.triggered.connect(self.import_inference_result)
+
         self.run_action = QAction("Run auto-fit", self)
         self.run_action.setEnabled(False)
         self.run_action.triggered.connect(lambda _checked=False: self.run_auto_fit())
@@ -538,6 +549,7 @@ class EisQtApp(QMainWindow):
         self.file_menu = self.menuBar().addMenu("File")
         self.file_menu.addAction(self.open_action)
         self.file_menu.addAction(self.open_folder_action)
+        self.file_menu.addAction(self.import_inference_action)
         self.file_menu.addAction(self.save_action)
 
         self.fit_menu = self.menuBar().addMenu("Fit")
@@ -829,6 +841,20 @@ class EisQtApp(QMainWindow):
         params_layout.addWidget(self.params_table)
         self.tabs.addTab(params_tab, "Best Parameters")
 
+        decision_tab = QWidget()
+        decision_layout = QVBoxLayout(decision_tab)
+        self.reliable_decision_headline = QLabel()
+        self.reliable_decision_headline.setWordWrap(True)
+        headline_font = self.reliable_decision_headline.font()
+        headline_font.setBold(True)
+        headline_font.setPointSize(headline_font.pointSize() + 2)
+        self.reliable_decision_headline.setFont(headline_font)
+        self.reliable_decision_details = QTextEdit()
+        self.reliable_decision_details.setReadOnly(True)
+        decision_layout.addWidget(self.reliable_decision_headline)
+        decision_layout.addWidget(self.reliable_decision_details)
+        self.tabs.addTab(decision_tab, "Reliable Decision")
+
         right_layout.addWidget(self.tabs)
 
         self.main_splitter.addWidget(left)
@@ -867,6 +893,7 @@ class EisQtApp(QMainWindow):
 
         self.open_action.setText(self.t("Open EIS files"))
         self.open_folder_action.setText(self.t("Open folder"))
+        self.import_inference_action.setText(self.t("Import reliable result..."))
         self.run_action.setText(self.t("Run auto-fit"))
         self.run_selected_action.setText(self.t("Run selected presets"))
         self.run_manual_action.setText(self.t("Run manual circuit"))
@@ -933,12 +960,14 @@ class EisQtApp(QMainWindow):
         self.tabs.setTabText(3, "KK Check")
         self.tabs.setTabText(4, "Parser")
         self.tabs.setTabText(5, self.t("Best Parameters"))
+        self.tabs.setTabText(6, self.t("Reliable Decision"))
 
         if not self.active_case():
             self.parser_summary.setText(self.t("No dataset loaded."))
             self.kk_summary.setText(self.t("No dataset loaded."))
         if self.params_table.rowCount() == 0:
             self.best_label.setText(self.t("No fit has been run."))
+        self.populate_reliable_decision_tab()
         if not self.statusBar().currentMessage():
             self.statusBar().showMessage(self.t("Ready"))
 
@@ -1112,6 +1141,48 @@ class EisQtApp(QMainWindow):
             return
 
         self.load_file_paths(sorted(file_paths))
+
+    def import_inference_result(self):
+        result_path, _ = QFileDialog.getOpenFileName(
+            self,
+            self.t("Import reliable result..."),
+            "",
+            self.t("Inference result (*.json);;All files (*.*)"),
+        )
+        if not result_path:
+            return
+        try:
+            payload = json.loads(Path(result_path).read_text(encoding="utf-8"))
+            decision = payload.get("decision")
+            source_file = payload.get("file")
+            if not isinstance(decision, dict):
+                raise ValueError("JSON does not contain a decision object")
+            source_resolved = os.path.normcase(os.path.abspath(source_file)) if source_file else ""
+            matched_index = next(
+                (
+                    index for index, case in enumerate(self.cases)
+                    if source_resolved
+                    and os.path.normcase(os.path.abspath(case.file_path)) == source_resolved
+                ),
+                None,
+            )
+            if matched_index is None and source_file:
+                source_name = os.path.basename(source_file)
+                matches = [
+                    index for index, case in enumerate(self.cases)
+                    if os.path.basename(case.file_path) == source_name
+                ]
+                matched_index = matches[0] if len(matches) == 1 else None
+            if matched_index is None:
+                raise ValueError(
+                    self.t("Load the matching EIS dataset before importing its inference result.")
+                )
+            self.cases[matched_index].inference_decision = decision
+            self.set_current_case(matched_index)
+            self.tabs.setCurrentIndex(6)
+            self.log(f"Imported reliable inference: {result_path}")
+        except Exception as exc:
+            QMessageBox.critical(self, self.t("Inference import error"), str(exc))
 
     def load_file_paths(self, file_paths):
         loaded_cases = []
@@ -1520,6 +1591,7 @@ class EisQtApp(QMainWindow):
         self.populate_params_table()
         self.populate_parser_tab()
         self.populate_kk_tab()
+        self.populate_reliable_decision_tab()
         self.populate_channel_combo(case)
         self.plot_data()
         has_result = case.best_result is not None
@@ -1570,6 +1642,7 @@ class EisQtApp(QMainWindow):
         case.kk_result = kk_result
         case.results = None
         case.best_result = None
+        case.inference_decision = None
         case.error_message = ""
         self.log(f"Switched {os.path.basename(case.file_path)} to channel {case.selected_channel}")
         self.populate_cases_table()
@@ -1684,6 +1757,24 @@ class EisQtApp(QMainWindow):
             values = [name, f"{value:.6e}", f"{confidence:.6e}", f"{rel_error:.2f}"]
             for col, cell_value in enumerate(values):
                 self.params_table.setItem(row, col, QTableWidgetItem(cell_value))
+
+    def populate_reliable_decision_tab(self):
+        case = self.active_case()
+        presentation = format_reliable_decision(
+            case.inference_decision if case else None,
+            language=self.language,
+        )
+        self.reliable_decision_headline.setText(presentation["headline"])
+        self.reliable_decision_details.setPlainText(presentation["details"])
+        colors = {
+            "supported": ("#dff3e4", "#102015"),
+            "refused": ("#fff4cc", "#332400"),
+            "not_loaded": ("#eeeeee", "#333333"),
+        }
+        background, foreground = colors[presentation["status"]]
+        self.reliable_decision_headline.setStyleSheet(
+            f"padding: 10px; background: {background}; color: {foreground};"
+        )
 
     def plot_data(self):
         self.plot_nyquist()
@@ -1914,6 +2005,9 @@ class EisQtApp(QMainWindow):
                     "bic": result.bic if result else "",
                     "n_params": result.n_params if result else "",
                     "fit_elapsed_seconds": result.elapsed_seconds if result else "",
+                    "fit_starts_attempted": result.starts_attempted if result else "",
+                    "fit_starts_succeeded": result.starts_succeeded if result else "",
+                    "fit_best_start_index": result.best_start_index if result else "",
                     "fit_status": result.status if result else ("ERROR" if case.error_message else "NOT_FIT"),
                     "flags": ", ".join(result.flags) if result and result.flags else case.error_message,
                 }
@@ -1942,6 +2036,9 @@ class EisQtApp(QMainWindow):
                         "bic": result.bic if result.success else "",
                         "n_params": result.n_params if result.success else "",
                         "elapsed_seconds": result.elapsed_seconds,
+                        "starts_attempted": result.starts_attempted,
+                        "starts_succeeded": result.starts_succeeded,
+                        "best_start_index": result.best_start_index,
                         "flags": ", ".join(result.flags) if result.flags else "",
                         "error_message": result.error_message,
                     }

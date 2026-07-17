@@ -1,4 +1,4 @@
-# Export Contract
+# Контракт экспорта
 
 Export is available through:
 
@@ -8,7 +8,7 @@ File -> Export...
 
 The user chooses a base name, and the app writes one or more outputs.
 
-## Export Outputs
+## Выходные файлы
 
 | Output | Purpose |
 |---|---|
@@ -24,7 +24,7 @@ The user chooses a base name, and the app writes one or more outputs.
 | `_residuals.png` | selected-case residual plot |
 | `_kk_check.png` | selected-case KK reconstruction/error plot |
 
-## Workbook Sheets
+## Листы книги Excel
 
 ```mermaid
 flowchart TD
@@ -35,7 +35,7 @@ flowchart TD
     Export --> KKCheck[KK Check]
 ```
 
-## Stable Data Contract
+## Стабильный состав данных
 
 CSV/XLSX column names stay English and stable even when the GUI language is Russian.
 
@@ -45,7 +45,7 @@ This is intentional:
 - spreadsheet templates do not break;
 - future Chem Suite modules can rely on stable keys.
 
-## What Goes Into Summary
+## Состав сводной таблицы
 
 One row per loaded file:
 
@@ -60,7 +60,7 @@ One row per loaded file:
 - AIC/BIC;
 - status and flags.
 
-## What Goes Into All Results
+## Состав таблицы всех результатов
 
 One row per attempted circuit:
 
@@ -72,7 +72,7 @@ One row per attempted circuit:
 - parameter error;
 - flags or error message.
 
-## What Goes Into Best Parameters
+## Состав таблицы лучших параметров
 
 One row per best-fit parameter:
 
@@ -81,7 +81,7 @@ One row per best-fit parameter:
 - confidence;
 - relative error percent.
 
-## What Goes Into KK Check
+## Состав таблицы проверки Крамерса—Кронига
 
 One row per loaded file:
 

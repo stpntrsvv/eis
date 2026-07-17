@@ -1,10 +1,10 @@
-# Future Chem Suite
+# Будущая экосистема Chem Suite
 
 EIS Solver is the first brick of a broader Chem Suite.
 
 The key design principle: keep each scientific workflow as a strong standalone module, but share infrastructure where it makes sense.
 
-## Possible Suite Modules
+## Возможные модули
 
 ```mermaid
 mindmap
@@ -33,7 +33,7 @@ mindmap
       XLSX/PDF
 ```
 
-## What To Reuse
+## Что следует переиспользовать
 
 From EIS Solver:
 
@@ -45,14 +45,14 @@ From EIS Solver:
 - Worker-thread pattern.
 - README plus Obsidian vault documentation style.
 
-## What To Avoid
+## Чего следует избегать
 
 - Do not revive `cycling.py` directly as production code.
 - Do not put domain logic directly in GUI.
 - Do not make export columns depend on UI language.
 - Do not make shared modules before two modules truly need the same abstraction.
 
-## Suggested Long-Term Architecture
+## Предлагаемая долгосрочная архитектура
 
 ```mermaid
 flowchart TD
@@ -68,7 +68,7 @@ flowchart TD
     Reports --> SharedExport
 ```
 
-## EIS Module Boundary
+## Границы модуля EIS
 
 EIS Solver should remain independently runnable even if Chem Suite becomes a larger app.
 
@@ -78,4 +78,3 @@ That means:
 - `eis_io.py` stays testable;
 - `eis_qt.py` can either stay standalone or become embedded later;
 - exports remain usable outside the suite.
-

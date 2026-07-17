@@ -1,4 +1,4 @@
-# Parser And Formats
+# Чтение файлов и форматы
 
 Parsing lives in `eis_io.py`.
 
@@ -13,16 +13,16 @@ columns
 metadata
 ```
 
-## Supported Inputs
+## Поддерживаемые входные данные
 
 | Format | Status |
 |---|---|
 | generic text/txt/csv/dat | working |
 | SmartStat-like first three numeric columns | working |
 | BioLogic `.mpt` | working through `galvani` |
-| BioLogic `.mpr` | working on a validated real single-sweep `Z` file; broader coverage pending |
+| BioLogic `.mpr` | working; loading and fitting validated on real laboratory EIS files |
 
-## Parser Flow
+## Порядок чтения файла
 
 ```mermaid
 flowchart TD
@@ -41,7 +41,7 @@ flowchart TD
     K --> L[EisDataset]
 ```
 
-## Channel Detection
+## Поиск канала импеданса
 
 The parser looks for impedance channels such as:
 
@@ -54,7 +54,7 @@ The parser looks for impedance channels such as:
 
 If multiple channels are available, the GUI exposes a channel dropdown.
 
-## Imaginary Sign Convention
+## Соглашение о знаке мнимой части
 
 For generic text fallback:
 
@@ -65,9 +65,9 @@ For named columns:
 
 - the parser tries to identify whether the column is raw imaginary impedance or already negative imaginary impedance.
 
-## What Needs Lab Data
+## Где полезно расширить проверку на лабораторных данных
 
-One real single-sweep BioLogic EIS `.mpr` has been validated. More lab files are needed for:
+Real laboratory BioLogic EIS `.mpr` files have been loaded and fitted successfully. Broader coverage remains useful for:
 
 Questions to answer with that file:
 
@@ -77,7 +77,7 @@ Questions to answer with that file:
 - Are units and signs consistent?
 - Does galvani expose all required arrays cleanly?
 
-## Fit Input Cleaning
+## Подготовка данных к фитингу
 
 Before fitting, the parser now:
 

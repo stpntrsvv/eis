@@ -6,7 +6,7 @@ tags:
 status: active
 ---
 
-# Parameter Meaning Library
+# Физический смысл параметров
 
 Короткий словарь параметров, которые появляются в текущих схемах.
 
@@ -41,7 +41,7 @@ status: active
 
 Warburg-параметры надо читать только вместе с формой low-frequency участка.
 
-## Inductor
+## Индуктивность
 
 | Параметр | Смысл |
 |---|---|
@@ -66,4 +66,3 @@ flowchart TD
     D --> G[Do not overinterpret]
     F --> G
 ```
-

@@ -15,7 +15,9 @@
 		{"id":"export","type":"file","file":"08 Export Contract.md","x":920,"y":0,"width":300,"height":180},
 		{"id":"suite","type":"file","file":"10 Future Chem Suite.md","x":0,"y":-520,"width":320,"height":180},
 		{"id":"philosophy","type":"file","file":"17 Chem Suite Philosophy.md","x":440,"y":-520,"width":320,"height":180},
-		{"id":"handoff","type":"file","file":"AI Handoff.md","x":-440,"y":-520,"width":320,"height":180}
+		{"id":"handoff","type":"file","file":"AI Handoff.md","x":-440,"y":-520,"width":320,"height":180},
+		{"id":"glossary","type":"file","file":"24 Глоссарий.md","x":920,"y":320,"width":320,"height":180},
+		{"id":"batchcli","type":"file","file":"25 Пакетный конвейер и CLI.md","x":920,"y":560,"width":340,"height":180}
 	],
 	"edges":[
 		{"id":"e1","fromNode":"start","fromSide":"left","toNode":"product","toSide":"right"},
@@ -33,6 +35,8 @@
 		{"id":"e13","fromNode":"suite","fromSide":"right","toNode":"philosophy","toSide":"left"},
 		{"id":"e14","fromNode":"start","fromSide":"top","toNode":"handoff","toSide":"bottom"},
 		{"id":"e15","fromNode":"science","fromSide":"bottom","toNode":"kk","toSide":"top"},
-		{"id":"e16","fromNode":"kk","fromSide":"top","toNode":"checklist","toSide":"bottom"}
+		{"id":"e16","fromNode":"kk","fromSide":"top","toNode":"checklist","toSide":"bottom"},
+		{"id":"e17","fromNode":"start","fromSide":"right","toNode":"glossary","toSide":"left"},
+		{"id":"e18","fromNode":"architecture","fromSide":"right","toNode":"batchcli","toSide":"left"}
 	]
 }

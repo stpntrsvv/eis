@@ -1,13 +1,16 @@
-# Architecture
+# Архитектура
 
-The architecture is deliberately simple: GUI, parser, fitting core, export.
+Архитектура намеренно разделена на четыре понятные части: чтение данных, вычислительное ядро, пользовательские интерфейсы и экспорт.
 
-## Module Map
+## Карта модулей
 
 ```mermaid
 flowchart TD
     CLI[eis_cli.py] --> IO[eis_io.py]
     GUI[eis_qt.py] --> IO
+    CLI --> Pipeline[eis_pipeline.py]
+    Pipeline --> IO
+    Pipeline --> Core[eis_core.py]
     GUI --> Core[eis_core.py]
     CLI --> Core
     IO --> Dataset[EisDataset]
@@ -16,19 +19,20 @@ flowchart TD
     GUI --> PresetStore[Local pro_presets.json]
 ```
 
-## File Responsibilities
+## Ответственность файлов
 
-| File | Role |
+| Файл | Ответственность |
 |---|---|
-| `eis_core.py` | Circuit families, guesses, bounds, fitting, AIC/BIC, flags |
-| `eis_io.py` | Text/BioLogic parsing, channel detection, dataset cleaning |
-| `eis_qt.py` | Production desktop GUI, threading, plots, export, localization |
-| `eis_cli.py` | CLI smoke/debug entrypoint |
-| `eis_utils.py` | Legacy compatibility wrapper |
-| `eis_app.py` | Legacy launcher wrapper to `eis_qt.py` |
-| `cycling.py` | Legacy scrap, not part of current EIS architecture |
+| `eis_core.py` | Семейства схем, начальные значения, границы, фитинг, AIC/BIC и диагностические флаги |
+| `eis_io.py` | Чтение текстовых файлов и BioLogic, поиск каналов, очистка набора данных |
+| `eis_qt.py` | Основной настольный интерфейс, фоновая обработка, графики, экспорт и локализация |
+| `eis_cli.py` | Интерфейс командной строки для воспроизводимых запусков и диагностики |
+| `eis_pipeline.py` | Независимый конвейер анализа, пакетная обработка и сериализуемый `AnalysisResult` |
+| `eis_utils.py` | Слой совместимости со старыми импортами |
+| `eis_app.py` | Устаревшая точка запуска, перенаправляющая в `eis_qt.py` |
+| `cycling.py` | Старый экспериментальный файл, не относящийся к действующей архитектуре EIS |
 
-## Core Data Types
+## Основные типы данных
 
 ```mermaid
 classDiagram
@@ -79,9 +83,9 @@ classDiagram
     FitResult --> AnalysisCase
 ```
 
-## GUI Threading
+## Фоновая работа GUI
 
-Fitting is performed in a Qt worker thread so the GUI remains responsive during batch analysis.
+Фитинг выполняется в рабочем потоке Qt. Поэтому окно продолжает отвечать во время обработки серии файлов, а пользователь видит ход выполнения и может запросить отмену.
 
 ```mermaid
 sequenceDiagram
@@ -102,21 +106,20 @@ sequenceDiagram
     Worker-->>GUI: finished(cancelled)
 ```
 
-## Local User Data
+## Локальные данные пользователя
 
-Pro presets are not stored in the repository.
+Пользовательские пресеты расширенного режима не хранятся в репозитории.
 
-Primary path on Windows:
+Основной путь в Windows:
 
 ```text
 %APPDATA%\EIS Solver\pro_presets.json
 ```
 
-Fallback path:
+Запасной путь:
 
 ```text
 .eis_solver_user/pro_presets.json
 ```
 
-The fallback folder is ignored by git.
-
+Запасная папка исключена из Git.

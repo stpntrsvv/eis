@@ -14,3 +14,7 @@ dist/
 *.log
 *.tmp
 *.zip
+
+# Re-downloadable validation corpora and generated batch artifacts.
+validation_data/raw/
+validation_data/artifacts/

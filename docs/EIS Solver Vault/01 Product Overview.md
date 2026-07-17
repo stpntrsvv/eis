@@ -1,49 +1,47 @@
-# Product Overview
+# Обзор продукта
 
-EIS Solver is a focused desktop application for equivalent-circuit analysis of electrochemical impedance spectroscopy data.
+EIS Solver — настольная программа для анализа данных электрохимической импедансной спектроскопии с помощью эквивалентных электрических схем.
 
-It is intentionally not a generic plotting tool. Its job is to take raw impedance spectra, fit a reasonable set of circuit models, expose diagnostics, and produce outputs that can go into reports or further analysis.
+Это не универсальная рисовалка графиков. Программа принимает исходные спектры, подбирает параметры нескольких осмысленных схем, показывает диагностику и готовит результаты для отчёта или дальнейшего анализа.
 
-## Target Users
+## Для кого предназначена программа
 
-- Lab electrochemists who need fast batch analysis.
-- Advanced users who know the physical circuit and want manual bounds.
-- Future Chem Suite workflows where EIS is one module among cycling, OCV, CV, GITT/PITT, and report tools.
+- Лабораторные электрохимики, которым нужен быстрый анализ серии файлов.
+- Опытные пользователи, которые знают предполагаемую физическую схему и хотят задавать границы параметров вручную.
+- Будущая экосистема Chem Suite, где EIS станет одним из модулей наряду с анализом циклирования, OCV, CV, GITT/PITT и подготовкой отчётов.
 
-## Product Promise
+## Что получает пользователь
 
-For a normal user:
+Обычный пользователь получает простой маршрут:
 
-> Drop files in, run auto-fit, inspect plots and diagnostics, export summary/results.
+> Добавить файлы, запустить автоматический подбор, проверить графики и диагностику, экспортировать результаты.
 
-For an advanced user:
+Опытный пользователь получает полный контроль:
 
-> Enter a custom equivalent circuit, set initial guesses and bounds, save the setup as a local preset, fit the batch.
+> Ввести свою эквивалентную схему, задать начальные значения и границы, сохранить настройку как локальный пресет и обработать всю серию файлов.
 
-## What Is In Production Scope
+## Что уже входит в рабочий контур
 
-- PySide6 GUI.
-- English/Russian UI switch.
-- Drag-and-drop and folder batch loading.
-- Auto-fit over the default circuit family.
-- Pro mode with selected presets.
-- Manual circuit fitting.
-- Manual initial/lower/upper bounds.
-- Local Pro presets.
-- Parser metadata view.
-- Nyquist, Bode, residual plots.
-- CSV and XLSX export.
-- Selected report and plot export.
+- Графический интерфейс на PySide6.
+- Переключение между русским и английским интерфейсом.
+- Перетаскивание файлов и пакетная загрузка папки.
+- Автоматический подбор по стандартному набору схем.
+- Расширенный режим с выбранными семействами моделей.
+- Ручной ввод схемы, начальных значений и границ.
+- Локальные пользовательские пресеты.
+- Просмотр метаданных и способа чтения файла.
+- Диаграммы Найквиста и Боде, а также графики остатков.
+- Экспорт CSV, XLSX, текстового отчёта и изображений.
 
-## What Is Not Yet In Production Scope
+## Что пока не входит в рабочий контур
 
-- Broad lab validation of multi-cycle and multi-channel BioLogic EIS `.mpr` files.
-- Formal pytest suite.
-- Packaged executable smoke on a clean machine.
-- Shared cloud/preset library.
-- Cycling/CV/GITT modules.
+- Расширенная проверка `.mpr` на дополнительных приборах, каналах и многоцикловых измерениях.
+- Полный набор автоматических тестов `pytest`.
+- Проверка собранной программы на чистом компьютере.
+- Общая облачная библиотека пресетов.
+- Модули циклирования, CV и GITT.
 
-## Product Shape
+## Устройство продукта
 
 ```mermaid
 mindmap

@@ -9,11 +9,11 @@ status: active
 source: Introductory impedance spectroscopy.pdf
 ---
 
-# Nyquist и Bode - чтение спектров
+# Диаграммы Найквиста и Боде: чтение спектров
 
 Методичка подчёркивает, что один только Nyquist-график не даёт полной картины: на нём плохо видно, где находятся частоты. Поэтому Nyquist и Bode надо читать вместе.
 
-## Nyquist Plot
+## Диаграмма Найквиста
 
 Обычно строится:
 
@@ -34,7 +34,7 @@ source: Introductory impedance spectroscopy.pdf
 - разные процессы могут сливаться;
 - depressed semicircle может быть неоднозначен.
 
-## Bode Plot
+## Диаграмма Боде
 
 Bode обычно показывает:
 
@@ -75,7 +75,7 @@ flowchart TD
 | blocking/polarization | низкочастотный capacitive хвост | phase уходит к ёмкостному поведению | electrode polarization |
 | diffusion | наклонный low-frequency хвост | характерный slope/phase | Warburg |
 
-## High-Frequency И Low-Frequency Смысл
+## Смысл высоких и низких частот
 
 Обычно:
 
@@ -97,4 +97,3 @@ flowchart TD
 
 > [!tip] Рабочий принцип
 > Если Nyquist выглядит красиво, но Bode phase и residuals не согласуются с моделью, доверять fit нельзя.
-

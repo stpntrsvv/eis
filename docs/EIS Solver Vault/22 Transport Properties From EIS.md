@@ -8,7 +8,7 @@ status: active
 source: Introductory impedance spectroscopy.pdf
 ---
 
-# Transport Properties From EIS
+# Транспортные свойства из данных EIS
 
 Методичка связывает impedance plots с transport properties: bulk resistance, conductivity, ionic mobility, concentration of mobile ions и diffusion-related quantities.
 
@@ -44,7 +44,7 @@ conductivity = thickness / (R_bulk * area)
 
 или эквивалентные transport metrics.
 
-## Bulk И Grain Boundary
+## Объём материала и границы зёрен
 
 Для polycrystalline/solid electrolyte systems часто различают:
 
@@ -65,7 +65,7 @@ flowchart LR
     Rbulk --> Conductivity[Conductivity if geometry known]
 ```
 
-## Почему Нужна Geometry В Программе
+## Зачем программе геометрия образца
 
 Без геометрии fit даёт circuit parameters, но не полноценные material transport properties.
 
@@ -88,7 +88,7 @@ Transport properties нельзя автоматически считать из
 - нет geometry;
 - электродный вклад смешан с bulk/grain contribution.
 
-## Возможный Future Feature
+## Возможное направление развития
 
 `Transport Analysis` tab:
 
@@ -98,4 +98,3 @@ Transport properties нельзя автоматически считать из
 4. Экспортирует в XLSX вместе с fit diagnostics.
 
 Это должно быть Pro/advanced feature, не default auto magic.
-

@@ -1,8 +1,8 @@
-# Scientific Model
+# Научная модель
 
 This page documents the current electrochemical and mathematical assumptions.
 
-## Fitting Engine
+## Движок фитинга
 
 The fitting engine is `impedance.models.circuits.CustomCircuit`.
 
@@ -14,7 +14,7 @@ CustomCircuit.fit(..., weight_by_modulus=True)
 
 This weights residuals by impedance modulus, which helps prevent high-impedance low-frequency points from dominating everything.
 
-## Default Circuit Families
+## Стандартные семейства схем
 
 | Family | Purpose |
 |---|---|
@@ -24,7 +24,7 @@ This weights residuals by impedance modulus, which helps prevent high-impedance 
 | `INDUCTIVE_CIRCUITS` | inductive loops or wiring/fixture effects |
 | `DEFAULT_CIRCUITS` | full auto-fit list |
 
-## Electrochemical Interpretation
+## Электрохимическая интерпретация
 
 ```mermaid
 flowchart LR
@@ -37,13 +37,13 @@ flowchart LR
     Interface --> Inductive[Inductive loop if present]
 ```
 
-## Why CPE Matters
+## Зачем нужен CPE
 
 Ideal capacitors are rarely enough for porous, rough, aged, coated, or chemically heterogeneous electrodes.
 
 The app keeps ideal `C` as a sanity-check model, but most practical circuit families use `CPE`.
 
-## Model Selection
+## Выбор модели
 
 The app does not choose the best model only by raw fit error.
 
@@ -53,9 +53,11 @@ Current selection:
 
 1. Fit all selected circuits.
 2. Classify each result as `OK`, `WARN`, or `BAD`.
-3. Prefer non-`BAD` candidates.
-4. Choose the minimum BIC.
-5. Tie-break by parameter count and mean fit error.
+3. Исключить `BAD`, если остались другие кандидаты.
+4. Найти минимальный BIC и сформировать окно статистической поддержки `ΔBIC ≤ 2`.
+5. Внутри окна предпочесть более простую модель, затем `OK` перед `WARN`.
+
+Статус не может отменить решающее преимущество по BIC: синтетические тесты показали, что истинный CPE иногда получает `WARN`, а приближённый идеальный RC — `OK`. Поэтому жёсткая иерархия статусов математически небезопасна.
 
 ```mermaid
 flowchart TD
@@ -69,7 +71,7 @@ flowchart TD
     G --> H
 ```
 
-## Kramers-Kronig Gate
+## Проверка Крамерса—Кронига
 
 Current implementation:
 
@@ -87,7 +89,7 @@ The Lin-KK check reconstructs the spectrum with a fixed distribution of RC relax
 - Schönleber `mu` criterion;
 - `PASS`, `WARN`, or `FAIL` status.
 
-## Fit Status
+## Состояние результата
 
 | Status | Meaning |
 |---|---|
@@ -95,10 +97,10 @@ The Lin-KK check reconstructs the spectrum with a fixed distribution of RC relax
 | `WARN` | useful candidate, but inspect flags/residuals |
 | `BAD` | severe non-identifiability, bound issue, or impossible uncertainty |
 
-## Current Limitations
+## Текущие ограничения
 
 - Kramers-Kronig validation uses the practical `impedance.py` Lin-KK implementation, not a full formal integral transform.
 - No formal physical model priors beyond bounds and flags.
 - No automatic rejection of all over-parameterized models beyond BIC/flags.
-- BioLogic `.mpr` is validated on one real single-sweep `Z` file; multi-cycle and additional-channel coverage remains open.
+- BioLogic `.mpr` loading and fitting are validated on real laboratory EIS files; coverage can still be expanded across additional instruments, channels, and multi-cycle files.
 - Each circuit fit has a 5,000-function-evaluation production budget and practical `1e-9` optimizer tolerances.

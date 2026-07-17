@@ -6,7 +6,7 @@ tags:
 status: active
 ---
 
-# Decision Log
+# Журнал инженерных решений
 
 Эта заметка нужна, чтобы через полгода не спрашивать: “почему мы сделали именно так?”
 
@@ -23,7 +23,7 @@ status: active
 - `eis_qt.py` — active GUI target;
 - tkinter/customtkinter не возвращать.
 
-## Core Отдельно От GUI
+## Ядро отдельно от интерфейса
 
 Причина:
 
@@ -49,7 +49,7 @@ Tradeoff:
 - GPL-3.0-or-later;
 - `.mpr` EIS всё равно надо валидировать на реальном lab file.
 
-## BIC Вместо Raw Fit Error
+## BIC вместо одной только ошибки фитинга
 
 Причина:
 
@@ -61,7 +61,7 @@ Tradeoff:
 
 - best model = lowest BIC among non-BAD candidates.
 
-## Pro Mode Скрыт
+## Расширенный режим скрыт по умолчанию
 
 Причина:
 
@@ -85,7 +85,7 @@ Tradeoff:
 - UI переводится;
 - export columns/sheet names/circuit strings остаются стабильными.
 
-## Local Presets Не В Репе
+## Пользовательские пресеты не хранятся в репозитории
 
 Причина:
 
@@ -97,4 +97,3 @@ Tradeoff:
 - `%APPDATA%\EIS Solver\pro_presets.json`;
 - fallback `.eis_solver_user/pro_presets.json`;
 - fallback folder в `.gitignore`.
-

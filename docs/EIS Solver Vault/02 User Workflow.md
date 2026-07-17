@@ -1,10 +1,10 @@
-# User Workflow
+# Рабочие сценарии
 
-This page describes how a human is expected to operate the app.
+Здесь описаны два основных способа работы: быстрый автоматический анализ и управляемый подбор модели в расширенном режиме.
 
-## Fast Workflow
+## Быстрый сценарий
 
-Use this when the goal is a quick and reproducible first-pass fit.
+Этот сценарий подходит для быстрой и воспроизводимой первичной оценки спектра.
 
 ```mermaid
 flowchart TD
@@ -16,9 +16,9 @@ flowchart TD
     F --> G[Export CSV/XLSX/report/plots]
 ```
 
-## Pro Workflow
+## Расширенный сценарий
 
-Use this when the automatic model family is too broad, or when the user knows the physical model.
+Этот сценарий нужен, если стандартный набор моделей слишком широк или физическая схема системы уже известна.
 
 ```mermaid
 flowchart TD
@@ -35,41 +35,40 @@ flowchart TD
     J --> K[Export]
 ```
 
-## What To Look At After Fit
+## Что проверить после фитинга
 
-1. Best circuit
-2. Fit percent
-3. BIC/AIC
-4. Status: `OK`, `WARN`, `BAD`
-5. Flags
-6. Residual plot
-7. Whether parameters are physically plausible
+1. Какая схема рекомендована.
+2. Какова средняя ошибка фитинга.
+3. Как соотносятся BIC и AIC у конкурирующих моделей.
+4. Какое состояние присвоено результату: `OK`, `WARN` или `BAD`.
+5. Какие диагностические флаги выставлены.
+6. Есть ли структура на графике остатков.
+7. Правдоподобны ли параметры с точки зрения физики системы.
 
-## Normal Export Choice
+## Обычный набор для экспорта
 
-For lab spreadsheets:
+Для обычной лабораторной таблицы:
 
 - `_summary.csv`
 - `_workbook.xlsx`
 
-For traceability:
+Для воспроизводимости и разбора результата:
 
 - `_all_results.csv`
 - `_best_parameters.csv`
 - `_parser_metadata.csv`
 
-For a selected sample report:
+Для отдельного отчёта по выбранному образцу:
 
 - `_report.txt`
 - `_nyquist.png`
 - `_bode.png`
 - `_residuals.png`
 
-## Language Switching
+## Переключение языка
 
-The app stays English by default. Russian UI is available through:
+По умолчанию интерфейс открывается на английском. Русский язык включается через меню:
 
 `View -> Language -> Русский`
 
-Data exports, circuit strings, and column names intentionally stay stable.
-
+Имена колонок в экспорте и строки эквивалентных схем намеренно не переводятся: это стабильный машинно-читаемый контракт.

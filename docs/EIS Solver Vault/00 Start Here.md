@@ -49,6 +49,9 @@ status: active
 | [[21 Экспериментальная практика и артефакты]] | cell geometry, electrodes, roughness, artifacts |
 | [[22 Transport Properties From EIS]] | conductivity/transport roadmap для будущего Chem Suite |
 | [[23 Kramers-Kronig Validation]] | проверка физической согласованности спектра до доверия fit |
+| [[24 Глоссарий]] | единый словарь терминов, сокращений и обозначений проекта |
+| [[25 Пакетный конвейер и CLI]] | массовый headless-анализ, JSONL/CSV и коды завершения |
+| [[26 Где лежит истина - статистический вывод и иерархический EIS]] | границы EIS, Байес, DRT, нейросети и анализ серий |
 
 ## Карта Проекта
 
@@ -77,13 +80,13 @@ flowchart LR
     J --> G
 ```
 
-## Текущий Release Boundary
+## Граница текущего выпуска
 
 > [!success] Уже можно считать рабочим релизным контуром
 > Для текстовых файлов и BioLogic `.mpt`: загрузка, batch, KK-check, auto-fit, Pro mode, manual bounds, plots, diagnostics, export, localization, help guide, Obsidian docs.
 
-> [!warning] Граница валидации `.mpr`
-> Реальный лабораторный BioLogic EIS `.mpr` с одним sweep и каналом `Z` успешно прочитан и fitted. Дополнительная валидация всё ещё нужна для multi-cycle файлов и каналов `Zce/Zstack/Zwe-ce/Z1/Z2`.
+> [!success] Валидация `.mpr`
+> Реальные лабораторные BioLogic EIS `.mpr` успешно прочитаны и fitted. Поддержка бинарного формата подтверждена на лабораторных данных; покрытие дополнительными приборами, каналами и multi-cycle файлами можно расширять дальше.
 
 ## Быстрый Запуск
 
@@ -105,7 +108,7 @@ CLI smoke:
 - Mean fit error около `1.000%`.
 - GUI worker, manual bounds, XLSX, drag-and-drop, Pro presets, localization smoke прошли.
 
-## Recommended Obsidian Setup
+## Рекомендуемая настройка Obsidian
 
 > [!info] Core features
 > Включи core plugin **Canvas**. Mermaid и callouts работают в Obsidian из коробки.
@@ -113,12 +116,12 @@ CLI smoke:
 > [!info] Optional community plugins
 > **Dataview** оживит таблицы на dashboard. **Templater** пригодится позже, если будем делать шаблоны decision logs, experiment notes и release notes.
 
-## Theory Intake
+## Источник теоретических заметок
 
 > [!note] Методичка
 > Источник: `Introductory impedance spectroscopy.pdf`. PDF является сканом с грязным OCR-слоем, поэтому заметки ниже — не перевод и не копия текста, а аккуратная русская инженерно-научная выжимка для проекта.
 
-## Dataview Блоки
+## Блоки Dataview
 
 Если установлен Dataview, эти блоки станут живыми таблицами.
 

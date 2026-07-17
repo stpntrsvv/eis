@@ -1,6 +1,9 @@
 # EIS Solver Lab Journal
 
-This README is the project handoff file for humans and future AI chats. Read it first, then read only the files that matter for the current task.
+This README is the compact project journal. Future AI chats should read the
+current operational brief in
+[`docs/EIS Solver Vault/AI Handoff.md`](docs/EIS%20Solver%20Vault/AI%20Handoff.md)
+before changing the inference engine.
 
 ## TL;DR For The Next Chat
 
@@ -26,9 +29,11 @@ CLI:
 ```bash
 .venv\Scripts\python.exe eis_cli.py "double very good eis.txt" --no-plot
 .venv\Scripts\python.exe eis_cli.py "file.mpr" --channel Z1 --no-plot
-python eis_cli.py "double very good eis.txt"
-python eis_cli.py "double very good eis.txt" --no-plot
+.venv\Scripts\python.exe eis_cli.py sample_data --recursive --format jsonl --output artifacts\sample_batch
+.venv\Scripts\python.exe eis_cli.py dataset.csv --preset interface --format json --output result.json
 ```
+
+The headless CLI accepts one or more files/directories, continues after bad inputs by default, and supports `text`, `json`, `jsonl`, and `csv` output. JSONL output is appended after every completed file so interrupted batch runs keep partial results. The default `--preset auto` now routes each spectrum to physically plausible circuit families and records its evidence in `metadata.circuit_routing`; named presets and `--circuit` remain fixed and reproducible. Use `--mode parse` or `--mode kk` to isolate input and data-validity checks, and `--fail-fast` when early termination is desired.
 
 GUI:
 
@@ -84,6 +89,8 @@ Scientific playbook pages:
 - `21 Экспериментальная практика и артефакты.md`
 - `22 Transport Properties From EIS.md`
 - `23 Kramers-Kronig Validation.md`
+- `24 Глоссарий.md`
+- `26 Где лежит истина - статистический вывод и иерархический EIS.md`
 
 The source PDF `Introductory impedance spectroscopy.pdf` is treated as local reference material and is ignored by git. The notes are Russian project-oriented summaries, not a verbatim copy.
 
@@ -96,9 +103,9 @@ The source PDF `Introductory impedance spectroscopy.pdf` is treated as local ref
    `R0 = min(Re)`, `R_transfer = max(Re) - min(Re)`, `C` from the frequency at the largest arc height.
 4. `initial_guess` and `bounds` are generated for every circuit.
 5. Models are fitted with `CustomCircuit.fit(..., weight_by_modulus=True)`.
-6. The winner is selected from successful fits, preferring non-`BAD` candidates and then the lowest BIC.
+6. The selector rejects `BAD` when possible, finds the minimum BIC, treats `ΔBIC <= 2` as statistically comparable, and then prefers the simpler/better-status model.
 7. BioLogic `.mpr` and `.mpt` files are loaded through `galvani`; only files containing EIS columns are accepted.
-8. Model selection now uses weighted residual diagnostics plus AIC/BIC. The recommended model is the lowest-BIC fit among non-BAD results, with simpler/lower-error tie-breaks.
+8. Model selection uses weighted residual diagnostics plus AIC/BIC. BIC evidence is evaluated before `OK/WARN`; status cannot overrule a decisively better BIC, but it breaks ties inside the `ΔBIC <= 2` support window.
 9. Fit status is diagnostic, not absolute truth:
    `OK` means no current warnings, `WARN` means inspect flags/residuals, `BAD` means severe non-identifiability or invalid parameters.
 10. Kramers-Kronig/Lin-KK consistency is checked on load. It is a data-quality gate (`PASS`, `WARN`, `FAIL`), not a replacement for equivalent-circuit fitting.
@@ -150,8 +157,53 @@ Supported elements in `build_bounds_and_guess()`:
 
 `eis_cli.py`:
 
-- Thin CLI wrapper around `eis_core.py`.
-- Useful for quick validation and reproducing fit output.
+- Headless single-file and batch interface over `eis_pipeline.py`.
+- Accepts files and directories, recursive discovery, circuit presets/manual circuits, optimizer budgets, and parse/KK-only modes.
+- Exports stable schema-versioned JSON/JSONL plus CSV summaries and returns explicit process exit codes.
+
+`eis_pipeline.py`:
+
+- GUI-independent orchestration layer for loading, Lin-KK, fitting, best-model selection, timing, and failures.
+- Provides `AnalysisResult`, `analyze_file()`, input discovery, and JSON-safe serialization.
+- Intended as the shared foundation for dataset stress tests, CLI automation, and future interfaces.
+
+`eis_series.py`:
+
+- First series-level layer over JSONL results: infers current LG/21700 series metadata, measures topology stability, KK/status distributions, and parameter trajectories over SOC.
+- Pools candidate-model evidence across a series, selects a shared topology within a robust non-BAD coverage window, and smooths positive SOC parameter trajectories on a log scale.
+
+`eis_joint.py`:
+
+- Opt-in raw-spectrum joint fitting for an explicitly declared `file,soc` manifest; it preserves independent results and regularizes SOC parameter paths without changing single-file analysis.
+
+`eis_uncertainty.py`:
+
+- Opt-in centered complex residual bootstrap and weighted profile-likelihood intervals for a chosen spectrum/circuit.
+
+`eis_drt.py`:
+
+- Topology-independent non-negative ridge DRT with hidden-frequency regularization selection and measured-band peak flags.
+
+`eis_resolution.py`:
+
+- Synthetic frequency-window/noise resolution maps that distinguish a short measurement band from a localized repeatability or model-mismatch problem.
+
+`eis_inference.py`:
+
+- Unified `fast`/`reliable` decision engine returning separate statistical and reliable recommendations, resolved time regions, localized information gaps, and next-measurement advice.
+
+`eis_inference_batch.py`:
+
+- Streaming directory/file batch inference to compact or full JSONL and flat CSV; failures are persisted per file and do not stop the corpus by default.
+- The compact v1 contract is frozen in `schemas/inference-summary-v1.schema.json`.
+- Compact JSONL/CSV summaries expose nullable calibrated diffusion-gate
+  status, thresholds, and the observed family ΔBIC without breaking schema v1.
+- The desktop GUI can import a full reliable-inference JSON and display the
+  calibrated family recommendation without reimplementing decision math.
+- Parameter intervals are not yet coverage-calibrated: the first frozen
+  truth-aware pilot measured substantial undercoverage, so parameter
+  identification labels remain benchmark-only.
+- This is diagnostic groundwork, not yet a hierarchical Bayesian fit.
 
 `eis_qt.py`:
 
@@ -215,7 +267,7 @@ Supported elements in `build_bounds_and_guess()`:
 5. Add parser and bounds-generation tests.
 6. Add import/export for Pro preset JSON files if sharing presets between machines becomes useful.
 7. Decide whether cycling/OCV analysis is needed; if yes, rebuild it as a separate module from scratch.
-8. Extend real BioLogic `.mpr` validation to additional instruments, channels, and multi-cycle files.
+8. Extend the validated BioLogic `.mpr` coverage to additional instruments, channels, and multi-cycle files.
 
 ## Rules For Future AI Chats
 
@@ -232,6 +284,66 @@ Supported elements in `build_bounds_and_guess()`:
 ## Current Status
 
 Journal date: 2026-07-15.
+
+Open-data validation baseline (2026-07-17):
+
+- added a reproducible `validation_data/` workspace with source manifest, licenses, checksums, ignored raw files/artifacts, and tracked reports;
+- downloaded two CC BY 4.0 Zenodo corpora: 54 NMC811 21700 cells and 72 LG MJ1 cathode spectra across SOC;
+- fixed named-CSV aliases and a dangerous pandas-style unnamed-index case that could silently shift frequency/Re/Im columns;
+- parsed `126/126` real spectra;
+- Lin-KK results: `84 PASS`, `36 WARN`, `6 FAIL`, median reconstruction RMSE about `1.502%`;
+- completed 504 simple-family fits and 204 full-auto subset fits with zero optimizer failures or budget exhaustion;
+- identified a model-ranking risk: BIC can recommend `WARN` candidates even when an `OK` candidate exists, because current selection only separates `BAD` from non-`BAD`;
+- full report: `validation_data/reports/2026-07-17-open-datasets-baseline.md`.
+- added `eis_synthetic.py` with known circuits/parameters, controlled noise/outliers, deterministic seeds, CSV spectra, and `truth.jsonl`;
+- rejected a hard `OK > WARN` selector after it reduced topology recovery on synthetic data;
+- calibrated conservative `ΔBIC <= 2` selection: 22/30 exact topologies on the first RC/CPE benchmark, including 10/10 ideal RC, 10/10 one-CPE, and 2/10 two-arc spectra;
+- the two-arc result identifies multi-start fitting as the next core task; full report: `validation_data/reports/2026-07-17-synthetic-selector-baseline.md`.
+- added deterministic bounded multi-start fitting with `--restarts` / `--restart-seed` and per-fit start metrics;
+- four-start replay on the ten two-arc spectra improved the true model's RSS in 5/10 files (dramatically in four) but exact selected topology remained 2/10;
+- multi-start median runtime was 3.54 s versus 1.01 s for one start; it remains opt-in while staged screening is designed;
+- report: `validation_data/reports/2026-07-17-multistart-benchmark.md`.
+- added the first series-level analyzer and applied it to LG charge/discharge plus 54 cells at fixed SOC;
+- dominant topology stability was about 77.8% for both LG directions and 75.9% across the 21700 cells;
+- report: `validation_data/reports/2026-07-17-series-diagnostics-baseline.md`.
+- pooled series-model report: `validation_data/reports/2026-07-17-pooled-series-model.md`.
+- joint raw-series smoke report: `validation_data/reports/2026-07-17-joint-raw-series-smoke.md`.
+- held-out SOC cross-validation report: `validation_data/reports/2026-07-17-joint-soc-cross-validation.md`.
+- full 36-spectrum charge-series CV found only a 0.11% gain from smoothing (below the 1% acceptance gate), so joint regularization remains opt-in and disabled by evidence.
+- first bootstrap/profile report: `validation_data/reports/2026-07-17-bootstrap-profile-baseline.md`.
+- first topology-selection bootstrap found no stable winner (66.7% maximum versus the 90% gate): `validation_data/reports/2026-07-17-topology-bootstrap-baseline.md`.
+- first DRT baseline resolved two time regions while leaving topology undecided: `validation_data/reports/2026-07-17-drt-lg-soc50-baseline.md`.
+- DRT stability map retained the high-frequency peak in at least 93.3% of perturbations but rejected the low-frequency peak as regularization-sensitive: `validation_data/reports/2026-07-17-drt-peak-stability.md`.
+- first localized information-gap report found the 0.01 Hz floor sufficient and recommended repeating/checking stationarity specifically in 0.01-0.1 Hz: `validation_data/reports/2026-07-17-low-frequency-resolution-map.md`.
+- unified inference report: `validation_data/reports/2026-07-17-unified-inference-lg-soc50.md`.
+- batch inference pipeline report: `validation_data/reports/2026-07-17-batch-inference-pipeline.md`.
+- external generalization round 2 added 52 usable spectra across Inspectrum/Zahner pouch datasets, a missing-frequency refusal corpus, and a DRT veto for unsupported bootstrap-stable topology: `validation_data/reports/2026-07-17-external-generalization-round-2.md`.
+- two-tier adaptive routing converted the Li-polymer SOC result from `39/42 BAD` first to `42/42 WARN` by admitting inductance, then to `42/42 OK` by admitting `L + diffusion` only for coherent low-frequency residuals; mean fit error fell from 10.52% after tier 1 to 1.91% after tier 2: `validation_data/reports/2026-07-17-lipo-bad-diagnosis.md`.
+- family-level inference now preserves `best`, exposes the BIC support window,
+  and separates exact-topology from family bootstrap stability;
+- a 20-sample competing-family bootstrap over all 42 Li-polymer spectra gave
+  `840/840` wins to `inductive_diffusion` with zero refusals, while the exact
+  `W/Wo/Ws` topology passed the 90% gate in only `23/42` spectra;
+- unified and batch inference now default to the same two-tier `adaptive_v2`
+  routing as the main CLI; report:
+  `validation_data/reports/2026-07-17-diffusion-family-inference.md`.
+- added `eis_family_benchmark.py` for truth-aware calibration of BIC top-K,
+  topology bootstrap and family bootstrap;
+- on a bounded 16-spectrum synthetic calibration, the 90% bootstrap gate
+  still produced 3 false topology and 2 false family recommendations; 95%
+  did not remove them, while 6 negative controls produced zero false-positive
+  diffusion claims;
+- therefore bootstrap stability remains conditional evidence rather than a
+  calibrated correctness probability; report:
+  `validation_data/reports/2026-07-17-synthetic-family-calibration.md`.
+- added `eis_diffusion_map.py` and a 42-spectrum controlled observability grid;
+  family recovery was `28/42`, exact topology `7/42`, and truth entered the
+  BIC window in `10/42`;
+- a benchmark-only positive gate combining family bootstrap >=90% with
+  diffusion-vs-base ΔBIC >=10 made 4/4 correct family recommendations and
+  7 refusals across strong cells plus negative controls; exact `W/Wo/Ws`
+  remains unrecommended pending broader calibration;
+- report: `validation_data/reports/2026-07-17-diffusion-observability-map.md`.
 
 First soft refactor completed:
 
@@ -254,6 +366,7 @@ Validation after venv discovery:
 - added `eis_io.py` parser layer;
 - installed and added `galvani` for BioLogic `.mpr/.mpt` support;
 - BioLogic `.mpt` smoke passed on public `galvani` `EIS_latin1.mpt` testdata;
+- real laboratory BioLogic EIS `.mpr` files were loaded and fitted successfully;
 - non-EIS BioLogic `.mpr` smoke correctly reports missing frequency/Re/Im EIS columns.
 - added Bode tab: `|Z|` and `Phase(Z)` vs frequency, with fit overlay when available;
 - report export now saves both `_nyquist.png` and `_bode.png`.
@@ -296,3 +409,16 @@ Validation after venv discovery:
 - best test-data circuit: `R0-p(R1,CPE0)-p(R2,CPE1)`;
 - mean fit error: about `1.000%`;
 - max parameter error: about `12.18%`.
+
+## Diffusion-family calibration
+
+The frozen benchmark-only diffusion gate was replicated on 70 positive
+synthetic spectra and 20 independent negative controls. It made 45 positive
+family recommendations, all correct, and refused the remaining 45 cases. It
+never recommends an exact `W/Wo/Ws` boundary condition.
+
+The unchanged gate was then tested on 60 diverse independent negative controls.
+It produced `0/60` false-positive recommendations, giving a one-sided 95%
+upper bound of `4.87%`. The positive-only family gate is therefore enabled in
+reliable inference; exact `W/Wo/Ws` topology and negative evidence remain
+uncalibrated. See [the production calibration report](validation_data/reports/2026-07-17-diffusion-gate-production-calibration.md).
