@@ -51,16 +51,25 @@ from eis_core import (
     KramersKronigResult,
     SIMPLE_CIRCUITS,
     build_bounds_and_guess,
-    choose_best_result,
     circuit_to_latex,
     circuit_to_readable,
     estimate_dataset_scale,
-    fit_circuit,
     lin_kk_check,
     parameter_names,
 )
 from eis_io import load_eis_file
+from eis_version import __version__
 from eis_gui_decision import format_reliable_decision
+from eis_inference import run_inference
+from eis_pipeline import AnalysisResult, fit_spectrum
+from eis_controller import (
+    ControllerExportRefused,
+    export_controller_package,
+)
+from eis_spice_export import (
+    SpiceExportRefused,
+    export_spice_package,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -171,6 +180,22 @@ UI_TRANSLATIONS = {
         "Select at least one export output.": "Выберите хотя бы один тип экспорта.",
         "Export base name": "Базовое имя экспорта",
         "Export error": "Ошибка экспорта",
+        "SPICE package...": "Пакет SPICE...",
+        "Export a validated SPICE package for the selected fitted spectrum.": "Экспортировать проверенный пакет SPICE для выбранного спектра с готовым подбором.",
+        "SPICE package directory": "Каталог пакета SPICE",
+        "ngspice executable": "Исполняемый файл ngspice",
+        "Executables (*.exe);;All files (*.*)": "Исполняемые файлы (*.exe);;Все файлы (*.*)",
+        "SPICE export refused": "Экспорт SPICE отклонён",
+        "SPICE export complete": "Экспорт SPICE завершён",
+        "Controller C package...": "Пакет C для контроллера...",
+        "Export validated float32 and Q31 controller implementations.": "Экспортировать проверенные варианты float32 и Q31 для контроллера.",
+        "Controller package directory": "Каталог пакета для контроллера",
+        "Controller sample period": "Период расчёта контроллера",
+        "Sample period, microseconds:": "Период расчёта, мкс:",
+        "Controller current scale": "Масштаб тока контроллера",
+        "Full-scale current, A:": "Ток полного масштаба, А:",
+        "Controller export refused": "Экспорт для контроллера отклонён",
+        "Controller export complete": "Экспорт для контроллера завершён",
         "Preset error": "Ошибка пресета",
         "Save Pro preset": "Сохранить Pro пресет",
         "Preset name:": "Имя пресета:",
@@ -182,6 +207,9 @@ UI_TRANSLATIONS = {
         "About EIS Solver": "О EIS Solver",
         "Close": "Закрыть",
         "Reliable Decision": "Надёжный вывод",
+        "Run reliable decision": "Рассчитать надёжный вывод",
+        "Calculating reliable decision...": "Выполняется расширенная проверка...",
+        "Reliable decision error": "Ошибка расширенной проверки",
         "Inference result (*.json);;All files (*.*)": "Результат inference (*.json);;Все файлы (*.*)",
         "Inference import error": "Ошибка импорта inference",
         "Load the matching EIS dataset before importing its inference result.": "Сначала загрузите соответствующий EIS-спектр.",
@@ -312,6 +340,7 @@ class AboutGuideDialog(QDialog):
                 "- Interface: RC/CPE, перенос заряда, две дуги.\n"
                 "- Transport: Warburg/диффузия и индуктивные петли.\n"
                 "- Run selected presets фитит только выбранные семейства.\n\n"
+                "- Пакеты SPICE и C для контроллера появляются в конце панели инструментов только в Pro mode и только после готового подбора.\n\n"
                 "Ручная схема\n"
                 "1. Введите строку схемы, например R0-p(R1,CPE0)-p(R2,CPE1).\n"
                 "2. Нажмите Fill guesses, чтобы заполнить Initial/Lower/Upper.\n"
@@ -349,6 +378,7 @@ class AboutGuideDialog(QDialog):
             "- Interface: RC/CPE, charge transfer, two-arc models.\n"
             "- Transport: Warburg/diffusion and inductive loops.\n"
             "- Run selected presets fits only the selected families.\n\n"
+            "- SPICE and controller C packages appear at the end of the toolbar only in Pro mode and only after a completed fit.\n\n"
             "Manual circuit\n"
             "1. Enter a circuit string, e.g. R0-p(R1,CPE0)-p(R2,CPE1).\n"
             "2. Click Fill guesses to populate Initial/Lower/Upper.\n"
@@ -390,18 +420,25 @@ class AnalysisCase:
     results: list[FitResult] | None = None
     best_result: FitResult | None = None
     inference_decision: dict | None = None
+    inference_payload: dict | None = None
     error_message: str = ""
 
 
 class FitWorker(QObject):
     started_case = Signal(int, str)
-    finished_case = Signal(int, object, object)
+    finished_case = Signal(int, object, object, object)
     failed_case = Signal(int, str)
     progress = Signal(int, int)
     log = Signal(str)
     finished = Signal(bool)
 
-    def __init__(self, cases: list[AnalysisCase], circuits: list[str], run_label: str, parameter_overrides_by_circuit=None):
+    def __init__(
+        self,
+        cases: list[AnalysisCase],
+        circuits: list[str] | None,
+        run_label: str,
+        parameter_overrides_by_circuit=None,
+    ):
         super().__init__()
         self.cases = cases
         self.circuits = circuits
@@ -411,10 +448,14 @@ class FitWorker(QObject):
 
     @Slot()
     def run(self):
-        total = len(self.cases) * len(self.circuits)
+        adaptive = self.circuits is None
+        total = 0 if adaptive else len(self.cases) * len(self.circuits)
         completed = 0
         cancelled = False
-        self.log.emit(f"{self.run_label}: {len(self.circuits)} circuit(s) selected.")
+        if adaptive:
+            self.log.emit(f"{self.run_label}: adaptive_v2 routing enabled.")
+        else:
+            self.log.emit(f"{self.run_label}: {len(self.circuits)} circuit(s) selected.")
         for index, case in enumerate(self.cases):
             if self.cancel_requested:
                 cancelled = True
@@ -424,42 +465,98 @@ class FitWorker(QObject):
             self.started_case.emit(index, label)
             self.log.emit(f"Fitting {label}...")
             try:
-                results = []
-                for circuit_string in self.circuits:
-                    if self.cancel_requested:
-                        cancelled = True
-                        break
-                    self.log.emit(f"  {circuit_string}...")
-                    result = fit_circuit(
-                        case.frequencies,
-                        case.z_experimental,
-                        circuit_string,
-                        case.scale,
-                        parameter_overrides=self.parameter_overrides_by_circuit.get(circuit_string),
+                def on_tier(tier, circuits, _metadata):
+                    nonlocal total
+                    if adaptive:
+                        total += len(circuits)
+                    self.log.emit(
+                        f"  tier {tier}: {len(circuits)} circuit(s): "
+                        + ", ".join(circuits)
                     )
-                    results.append(result)
+
+                def on_result(result):
+                    nonlocal completed
                     completed += 1
-                    self.progress.emit(completed, total)
+                    self.progress.emit(completed, max(total, completed))
                     outcome = (
                         f"{result.status}, fit={result.mean_fit_error:.3f}%"
                         if result.success
                         else f"{result.status}: {result.error_message}"
                     )
-                    self.log.emit(f"  {circuit_string}: {outcome} ({result.elapsed_seconds:.2f}s)")
-                if self.cancel_requested:
+                    self.log.emit(
+                        f"  {result.circuit_string}: {outcome} "
+                        f"({result.elapsed_seconds:.2f}s)"
+                    )
+
+                fit_outcome = fit_spectrum(
+                    case.frequencies,
+                    case.z_experimental,
+                    circuits=self.circuits,
+                    parameter_overrides_by_circuit=self.parameter_overrides_by_circuit,
+                    on_result=on_result,
+                    on_tier=on_tier,
+                    should_cancel=lambda: self.cancel_requested,
+                )
+                if fit_outcome.cancelled:
                     cancelled = True
                     break
-                best_result = choose_best_result(results)
-                self.finished_case.emit(index, results, best_result)
+                if fit_outcome.best is None:
+                    raise RuntimeError("No circuit fit completed.")
+                self.finished_case.emit(
+                    index,
+                    fit_outcome.fits,
+                    fit_outcome.best,
+                    fit_outcome.routing_metadata,
+                )
                 self.log.emit(
-                    f"Best for {label}: {best_result.circuit_string}, "
-                    f"fit={best_result.mean_fit_error:.3f}%, BIC={best_result.bic:.2f}"
+                    f"Best for {label}: {fit_outcome.best.circuit_string}, "
+                    f"fit={fit_outcome.best.mean_fit_error:.3f}%, "
+                    f"BIC={fit_outcome.best.bic:.2f}"
                 )
             except Exception as exc:
                 self.failed_case.emit(index, str(exc))
                 self.log.emit(f"Fit error for {label}: {exc}")
 
         self.finished.emit(cancelled)
+
+    @Slot()
+    def cancel(self):
+        self.cancel_requested = True
+
+
+class ReliableInferenceWorker(QObject):
+    result_ready = Signal(int, object)
+    failed = Signal(int, str)
+    log = Signal(str)
+    finished = Signal(bool)
+
+    def __init__(self, case_index: int, file_path: str, channel: str | None):
+        super().__init__()
+        self.case_index = case_index
+        self.file_path = file_path
+        self.channel = channel
+        self.cancel_requested = False
+
+    @Slot()
+    def run(self):
+        label = os.path.basename(self.file_path)
+        self.log.emit(f"Running extended reliability check for {label}...")
+        try:
+            payload = run_inference(
+                self.file_path,
+                mode="reliable",
+                channel=self.channel,
+            )
+            if self.cancel_requested:
+                self.finished.emit(True)
+                return
+            self.result_ready.emit(self.case_index, payload)
+            self.log.emit(f"Extended reliability check complete for {label}.")
+            self.finished.emit(False)
+        except Exception as exc:
+            self.failed.emit(self.case_index, str(exc))
+            self.log.emit(f"Extended reliability check failed for {label}: {exc}")
+            self.finished.emit(False)
 
     @Slot()
     def cancel(self):
@@ -501,7 +598,7 @@ class EisQtApp(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("EIS Solver")
+        self.setWindowTitle(f"EIS Solver {__version__}")
         self.resize(1280, 820)
 
         self.cases: list[AnalysisCase] = []
@@ -510,6 +607,7 @@ class EisQtApp(QMainWindow):
         self._updating_channel_combo = False
         self.fit_thread = None
         self.fit_worker = None
+        self.reliable_running = False
         self.close_after_fit = False
         self.user_presets = {}
         self.language = "en"
@@ -543,6 +641,18 @@ class EisQtApp(QMainWindow):
         self.save_action.setEnabled(False)
         self.save_action.triggered.connect(self.export_results)
 
+        self.spice_export_action = QAction("SPICE package...", self)
+        self.spice_export_action.setVisible(False)
+        self.spice_export_action.setEnabled(False)
+        self.spice_export_action.triggered.connect(self.export_spice_package_for_active_case)
+
+        self.controller_export_action = QAction("Controller C package...", self)
+        self.controller_export_action.setVisible(False)
+        self.controller_export_action.setEnabled(False)
+        self.controller_export_action.triggered.connect(
+            self.export_controller_package_for_active_case
+        )
+
         self.about_action = QAction("About / Guide", self)
         self.about_action.triggered.connect(self.show_about_guide)
 
@@ -575,12 +685,16 @@ class EisQtApp(QMainWindow):
         self.help_menu = self.menuBar().addMenu("Help")
         self.help_menu.addAction(self.about_action)
 
-        toolbar = self.addToolBar("Main")
-        toolbar.addAction(self.open_action)
-        toolbar.addAction(self.open_folder_action)
-        toolbar.addAction(self.run_action)
-        toolbar.addAction(self.cancel_action)
-        toolbar.addAction(self.save_action)
+        self.main_toolbar = self.addToolBar("Main")
+        self.main_toolbar.addAction(self.open_action)
+        self.main_toolbar.addAction(self.open_folder_action)
+        self.main_toolbar.addAction(self.run_action)
+        self.main_toolbar.addAction(self.cancel_action)
+        self.main_toolbar.addAction(self.save_action)
+        self.spice_separator_action = self.main_toolbar.addSeparator()
+        self.spice_separator_action.setVisible(False)
+        self.main_toolbar.addAction(self.spice_export_action)
+        self.main_toolbar.addAction(self.controller_export_action)
 
         self.setStatusBar(QStatusBar(self))
         self.statusBar().showMessage("Ready")
@@ -851,7 +965,11 @@ class EisQtApp(QMainWindow):
         self.reliable_decision_headline.setFont(headline_font)
         self.reliable_decision_details = QTextEdit()
         self.reliable_decision_details.setReadOnly(True)
+        self.run_reliable_button = QPushButton("Run reliable decision")
+        self.run_reliable_button.setEnabled(False)
+        self.run_reliable_button.clicked.connect(self.run_reliable_decision)
         decision_layout.addWidget(self.reliable_decision_headline)
+        decision_layout.addWidget(self.run_reliable_button)
         decision_layout.addWidget(self.reliable_decision_details)
         self.tabs.addTab(decision_tab, "Reliable Decision")
 
@@ -882,7 +1000,7 @@ class EisQtApp(QMainWindow):
         dialog.exec()
 
     def apply_language(self):
-        self.setWindowTitle(self.t("EIS Solver"))
+        self.setWindowTitle(f"{self.t('EIS Solver')} {__version__}")
         self.file_menu.setTitle(self.t("File"))
         self.fit_menu.setTitle(self.t("Fit"))
         self.view_menu.setTitle(self.t("View"))
@@ -899,6 +1017,14 @@ class EisQtApp(QMainWindow):
         self.run_manual_action.setText(self.t("Run manual circuit"))
         self.cancel_action.setText(self.t("Cancel fit"))
         self.save_action.setText(self.t("Export..."))
+        self.spice_export_action.setText(self.t("SPICE package..."))
+        self.spice_export_action.setToolTip(
+            self.t("Export a validated SPICE package for the selected fitted spectrum.")
+        )
+        self.controller_export_action.setText(self.t("Controller C package..."))
+        self.controller_export_action.setToolTip(
+            self.t("Export validated float32 and Q31 controller implementations.")
+        )
         self.about_action.setText(self.t("About / Guide"))
 
         self.file_box.setTitle(self.t("Datasets"))
@@ -961,6 +1087,11 @@ class EisQtApp(QMainWindow):
         self.tabs.setTabText(4, "Parser")
         self.tabs.setTabText(5, self.t("Best Parameters"))
         self.tabs.setTabText(6, self.t("Reliable Decision"))
+        self.run_reliable_button.setText(
+            self.t("Calculating reliable decision...")
+            if self.reliable_running
+            else self.t("Run reliable decision")
+        )
 
         if not self.active_case():
             self.parser_summary.setText(self.t("No dataset loaded."))
@@ -1178,6 +1309,7 @@ class EisQtApp(QMainWindow):
                     self.t("Load the matching EIS dataset before importing its inference result.")
                 )
             self.cases[matched_index].inference_decision = decision
+            self.cases[matched_index].inference_payload = payload
             self.set_current_case(matched_index)
             self.tabs.setCurrentIndex(6)
             self.log(f"Imported reliable inference: {result_path}")
@@ -1240,11 +1372,26 @@ class EisQtApp(QMainWindow):
 
     def set_pro_mode(self, enabled):
         self.pro_panel.setVisible(enabled)
+        self.spice_separator_action.setVisible(enabled)
+        self.spice_export_action.setVisible(enabled)
+        self.controller_export_action.setVisible(enabled)
         self.run_selected_action.setEnabled(enabled and self.fit_thread is None and bool(self.cases))
         self.run_manual_action.setEnabled(enabled and self.fit_thread is None and bool(self.cases))
         self.run_selected_button.setEnabled(enabled and self.fit_thread is None and bool(self.cases))
         self.run_manual_button.setEnabled(enabled and self.fit_thread is None and bool(self.cases))
+        self.update_spice_export_action()
         self.log("Pro mode enabled." if enabled else "Pro mode hidden.")
+
+    def update_spice_export_action(self):
+        case = self.active_case()
+        enabled = (
+            self.pro_toggle_button.isChecked()
+            and self.fit_thread is None
+            and case is not None
+            and case.best_result is not None
+        )
+        self.spice_export_action.setEnabled(enabled)
+        self.controller_export_action.setEnabled(enabled)
 
     def selected_preset_circuits(self):
         circuits = []
@@ -1257,7 +1404,7 @@ class EisQtApp(QMainWindow):
         return circuits
 
     def run_auto_fit(self):
-        self.run_fit(list(DEFAULT_CIRCUITS), "Auto-fit")
+        self.run_fit(None, "Auto-fit")
 
     def run_selected_fit(self):
         circuits = self.selected_preset_circuits()
@@ -1357,21 +1504,31 @@ class EisQtApp(QMainWindow):
             "Number suffixes matter: R0, R1, CPE0, CPE1.",
         )
 
-    def run_fit(self, circuits=None, run_label="Auto-fit", parameter_overrides_by_circuit=None):
+    def run_fit(
+        self,
+        circuits=DEFAULT_CIRCUITS,
+        run_label="Auto-fit",
+        parameter_overrides_by_circuit=None,
+    ):
         if not self.cases:
             return
         if self.fit_thread is not None:
             return
 
-        circuits = list(circuits or DEFAULT_CIRCUITS)
+        circuits = None if circuits is None else list(circuits)
         self.log(f"Running {run_label} for {len(self.cases)} file(s)...")
 
         for case in self.cases:
             case.results = None
             case.best_result = None
+            case.inference_decision = None
+            case.inference_payload = None
             case.error_message = ""
 
-        self.progress_bar.setRange(0, len(self.cases) * len(circuits))
+        if circuits is None:
+            self.progress_bar.setRange(0, 0)
+        else:
+            self.progress_bar.setRange(0, len(self.cases) * len(circuits))
         self.progress_bar.setValue(0)
         self.populate_cases_table()
         self.set_fit_controls_running(True)
@@ -1386,6 +1543,39 @@ class EisQtApp(QMainWindow):
         self.fit_worker.progress.connect(self.on_fit_progress)
         self.fit_worker.log.connect(self.log)
         self.fit_worker.finished.connect(self.on_fit_finished)
+        self.fit_worker.finished.connect(self.fit_thread.quit)
+        self.fit_worker.finished.connect(self.fit_worker.deleteLater)
+        self.fit_thread.finished.connect(self.fit_thread.deleteLater)
+        self.fit_thread.finished.connect(self.clear_fit_thread)
+        self.fit_thread.start()
+
+    def run_reliable_decision(self):
+        case = self.active_case()
+        if case is None or self.fit_thread is not None:
+            return
+
+        case_index = self.current_case_index
+        case.inference_decision = None
+        case.inference_payload = None
+        self.reliable_running = True
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setValue(0)
+        self.set_fit_controls_running(True)
+        self.run_reliable_button.setText(self.t("Calculating reliable decision..."))
+        self.log(self.t("Calculating reliable decision..."))
+
+        self.fit_thread = QThread(self)
+        self.fit_worker = ReliableInferenceWorker(
+            case_index,
+            case.file_path,
+            case.selected_channel,
+        )
+        self.fit_worker.moveToThread(self.fit_thread)
+        self.fit_thread.started.connect(self.fit_worker.run)
+        self.fit_worker.result_ready.connect(self.on_reliable_decision_ready)
+        self.fit_worker.failed.connect(self.on_reliable_decision_failed)
+        self.fit_worker.log.connect(self.log)
+        self.fit_worker.finished.connect(self.on_reliable_decision_finished)
         self.fit_worker.finished.connect(self.fit_thread.quit)
         self.fit_worker.finished.connect(self.fit_worker.deleteLater)
         self.fit_thread.finished.connect(self.fit_thread.deleteLater)
@@ -1424,9 +1614,15 @@ class EisQtApp(QMainWindow):
         self.transport_combo.setEnabled(not running)
         self.cancel_action.setEnabled(running)
         self.cancel_button.setEnabled(running)
+        self.run_reliable_button.setEnabled((not running) and self.active_case() is not None)
         self.channel_combo.setEnabled((not running) and self.channel_combo.count() > 1)
         self.save_action.setEnabled((not running) and any(case.best_result for case in self.cases))
         self.save_button.setEnabled((not running) and self.active_case() is not None and self.active_case().best_result is not None)
+        if running:
+            self.spice_export_action.setEnabled(False)
+            self.controller_export_action.setEnabled(False)
+        else:
+            self.update_spice_export_action()
 
     @Slot(int, str)
     def on_fit_started_case(self, index: int, label: str):
@@ -1436,13 +1632,21 @@ class EisQtApp(QMainWindow):
             self.populate_cases_table()
             self.set_current_case(index)
 
-    @Slot(int, object, object)
-    def on_fit_finished_case(self, index: int, results, best_result):
+    @Slot(int, object, object, object)
+    def on_fit_finished_case(
+        self,
+        index: int,
+        results,
+        best_result,
+        routing_metadata,
+    ):
         if not (0 <= index < len(self.cases)):
             return
         case = self.cases[index]
         case.results = results
         case.best_result = best_result
+        case.metadata = dict(case.metadata or {})
+        case.metadata["circuit_routing"] = routing_metadata
         case.error_message = ""
         self.populate_cases_table()
         if index == self.current_case_index:
@@ -1478,10 +1682,48 @@ class EisQtApp(QMainWindow):
             self.set_current_case(max(0, self.current_case_index))
         self.set_fit_controls_running(False)
 
+    @Slot(int, object)
+    def on_reliable_decision_ready(self, index: int, payload):
+        if not (0 <= index < len(self.cases)):
+            return
+        decision = payload.get("decision") if isinstance(payload, dict) else None
+        if not isinstance(decision, dict):
+            self.on_reliable_decision_failed(index, "Result does not contain a decision object.")
+            return
+        case = self.cases[index]
+        case.inference_payload = payload
+        case.inference_decision = decision
+        if index == self.current_case_index:
+            self.populate_reliable_decision_tab()
+            self.tabs.setCurrentIndex(6)
+
+    @Slot(int, str)
+    def on_reliable_decision_failed(self, index: int, error_message: str):
+        if 0 <= index < len(self.cases):
+            self.cases[index].inference_payload = None
+            self.cases[index].inference_decision = None
+        QMessageBox.critical(
+            self,
+            self.t("Reliable decision error"),
+            error_message,
+        )
+
+    @Slot(bool)
+    def on_reliable_decision_finished(self, cancelled: bool):
+        self.reliable_running = False
+        self.progress_bar.setRange(0, 1)
+        self.progress_bar.setValue(0 if cancelled else 1)
+        self.run_reliable_button.setText(self.t("Run reliable decision"))
+        if cancelled:
+            self.log("Extended reliability check cancelled.")
+        self.set_fit_controls_running(False)
+        self.populate_reliable_decision_tab()
+
     @Slot()
     def clear_fit_thread(self):
         self.fit_thread = None
         self.fit_worker = None
+        self.run_reliable_button.setEnabled(self.active_case() is not None)
 
     def closeEvent(self, event):
         if self.fit_thread is None:
@@ -1595,12 +1837,16 @@ class EisQtApp(QMainWindow):
         self.populate_channel_combo(case)
         self.plot_data()
         has_result = case.best_result is not None
+        self.run_reliable_button.setEnabled(self.fit_thread is None)
         if self.fit_thread is None:
             self.save_action.setEnabled(has_result)
             self.save_button.setEnabled(has_result)
+            self.update_spice_export_action()
         else:
             self.save_action.setEnabled(False)
             self.save_button.setEnabled(False)
+            self.spice_export_action.setEnabled(False)
+            self.controller_export_action.setEnabled(False)
             self.channel_combo.setEnabled(False)
 
     def populate_channel_combo(self, case):
@@ -1643,6 +1889,7 @@ class EisQtApp(QMainWindow):
         case.results = None
         case.best_result = None
         case.inference_decision = None
+        case.inference_payload = None
         case.error_message = ""
         self.log(f"Switched {os.path.basename(case.file_path)} to channel {case.selected_channel}")
         self.populate_cases_table()
@@ -1763,12 +2010,14 @@ class EisQtApp(QMainWindow):
         presentation = format_reliable_decision(
             case.inference_decision if case else None,
             language=self.language,
+            fit_completed=bool(case and case.best_result),
         )
         self.reliable_decision_headline.setText(presentation["headline"])
         self.reliable_decision_details.setPlainText(presentation["details"])
         colors = {
             "supported": ("#dff3e4", "#102015"),
             "refused": ("#fff4cc", "#332400"),
+            "pending": ("#e8f0fe", "#172b4d"),
             "not_loaded": ("#eeeeee", "#333333"),
         }
         background, foreground = colors[presentation["status"]]
@@ -2109,6 +2358,202 @@ class EisQtApp(QMainWindow):
                 rows.append({**base, "key": key, "value": value})
         return rows
 
+    def export_spice_package_for_active_case(self):
+        case = self.active_case()
+        if case is None or case.best_result is None:
+            QMessageBox.information(
+                self,
+                self.t("Nothing to export"),
+                self.t("Run a fit before exporting results."),
+            )
+            return
+        if self.fit_thread is not None:
+            return
+
+        target_path, _ = QFileDialog.getSaveFileName(
+            self,
+            self.t("SPICE package directory"),
+            "",
+            self.t("All files (*.*)"),
+        )
+        if not target_path:
+            return
+
+        initial_ngspice = getattr(self, "_last_ngspice_path", "")
+        ngspice_path, _ = QFileDialog.getOpenFileName(
+            self,
+            self.t("ngspice executable"),
+            initial_ngspice,
+            self.t("Executables (*.exe);;All files (*.*)"),
+        )
+        if not ngspice_path:
+            return
+        self._last_ngspice_path = ngspice_path
+
+        fits = list(case.results or [])
+        if case.best_result not in fits:
+            fits.append(case.best_result)
+        analysis = AnalysisResult(
+            file_path=case.file_path,
+            success=True,
+            source_format=case.source_format,
+            selected_channel=case.selected_channel,
+            columns=list(case.columns or []),
+            metadata=dict(case.metadata or {}),
+            point_count=len(case.frequencies),
+            scale=case.scale,
+            kk=case.kk_result,
+            fits=fits,
+            best=case.best_result,
+            stage="complete",
+        )
+
+        self.spice_export_action.setEnabled(False)
+        self.statusBar().showMessage(self.t("SPICE package..."))
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            package = export_spice_package(
+                analysis,
+                case.frequencies,
+                target_path,
+                source_file=case.file_path,
+                ngspice_executable=ngspice_path,
+            )
+        except (OSError, ValueError, SpiceExportRefused) as exc:
+            QApplication.restoreOverrideCursor()
+            self.update_spice_export_action()
+            QMessageBox.critical(self, self.t("SPICE export refused"), str(exc))
+            self.log(f"SPICE export refused: {exc}")
+            return
+        finally:
+            if QApplication.overrideCursor() is not None:
+                QApplication.restoreOverrideCursor()
+
+        self.update_spice_export_action()
+        if self.language == "ru":
+            message = (
+                f"Каталог: {package.package_directory}\n"
+                f"Порядок: {package.selected_order}\n"
+                f"ngspice: {package.simulator_version}"
+            )
+        else:
+            message = (
+                f"Directory: {package.package_directory}\n"
+                f"Order: {package.selected_order}\n"
+                f"ngspice: {package.simulator_version}"
+            )
+        QMessageBox.information(self, self.t("SPICE export complete"), message)
+        self.log(f"SPICE package validated: {package.package_directory}")
+
+    def export_controller_package_for_active_case(self):
+        case = self.active_case()
+        if case is None or case.best_result is None:
+            QMessageBox.information(
+                self,
+                self.t("Nothing to export"),
+                self.t("Run a fit before exporting results."),
+            )
+            return
+        if self.fit_thread is not None:
+            return
+
+        target_path, _ = QFileDialog.getSaveFileName(
+            self,
+            self.t("Controller package directory"),
+            "",
+            self.t("All files (*.*)"),
+        )
+        if not target_path:
+            return
+        sample_period_us, accepted = QInputDialog.getDouble(
+            self,
+            self.t("Controller sample period"),
+            self.t("Sample period, microseconds:"),
+            100.0,
+            0.000001,
+            1_000_000_000.0,
+            6,
+        )
+        if not accepted:
+            return
+        current_full_scale_a, accepted = QInputDialog.getDouble(
+            self,
+            self.t("Controller current scale"),
+            self.t("Full-scale current, A:"),
+            1.0,
+            0.000001,
+            1_000_000_000.0,
+            6,
+        )
+        if not accepted:
+            return
+
+        fits = list(case.results or [])
+        if case.best_result not in fits:
+            fits.append(case.best_result)
+        analysis = AnalysisResult(
+            file_path=case.file_path,
+            success=True,
+            source_format=case.source_format,
+            selected_channel=case.selected_channel,
+            columns=list(case.columns or []),
+            metadata=dict(case.metadata or {}),
+            point_count=len(case.frequencies),
+            scale=case.scale,
+            kk=case.kk_result,
+            fits=fits,
+            best=case.best_result,
+            stage="complete",
+        )
+
+        self.controller_export_action.setEnabled(False)
+        self.statusBar().showMessage(self.t("Controller C package..."))
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            package = export_controller_package(
+                analysis,
+                case.frequencies,
+                target_path,
+                sample_period_s=sample_period_us * 1e-6,
+                current_full_scale_a=current_full_scale_a,
+                source_file=case.file_path,
+            )
+        except (OSError, ValueError, ControllerExportRefused) as exc:
+            QApplication.restoreOverrideCursor()
+            self.update_spice_export_action()
+            QMessageBox.critical(
+                self,
+                self.t("Controller export refused"),
+                str(exc),
+            )
+            self.log(f"Controller export refused: {exc}")
+            return
+        finally:
+            if QApplication.overrideCursor() is not None:
+                QApplication.restoreOverrideCursor()
+
+        self.update_spice_export_action()
+        if self.language == "ru":
+            message = (
+                f"Каталог: {package.package_directory}\n"
+                f"Порядок: {package.selected_order}\n"
+                f"RC-секций: {package.section_count}\n"
+                "Варианты: float32 и Q31"
+            )
+        else:
+            message = (
+                f"Directory: {package.package_directory}\n"
+                f"Order: {package.selected_order}\n"
+                f"RC sections: {package.section_count}\n"
+                "Variants: float32 and Q31"
+            )
+        QMessageBox.information(
+            self,
+            self.t("Controller export complete"),
+            message,
+        )
+        self.log(f"Controller C package validated: {package.package_directory}")
+
     def export_results(self):
         if not self.cases:
             return
@@ -2292,7 +2737,41 @@ class EisQtApp(QMainWindow):
         return [report_path, plot_path, bode_path, residual_path, kk_path]
 
 
+def packaged_release_smoke(file_path: str) -> int:
+    """Hidden packaged-build check: GUI construction plus one real fit."""
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    app = QApplication.instance() or QApplication([])
+    window = EisQtApp()
+    try:
+        dataset = load_eis_file(file_path)
+        kk = lin_kk_check(dataset.frequencies, dataset.z)
+        outcome = fit_spectrum(
+            dataset.frequencies,
+            dataset.z,
+            circuits=["R0-p(R1,CPE0)-p(R2,CPE1)"],
+        )
+        if (
+            not kk.success
+            or outcome.best is None
+            or not outcome.best.success
+            or outcome.best.status not in {"OK", "WARN"}
+        ):
+            return 1
+        return 0
+    except Exception:
+        return 2
+    finally:
+        window.close()
+        app.processEvents()
+
+
 def main():
+    if "--release-smoke" in sys.argv:
+        index = sys.argv.index("--release-smoke")
+        if index + 1 >= len(sys.argv):
+            raise SystemExit(2)
+        raise SystemExit(packaged_release_smoke(sys.argv[index + 1]))
     app = QApplication(sys.argv)
     window = EisQtApp()
     window.show()

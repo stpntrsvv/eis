@@ -5,6 +5,9 @@ current operational brief in
 [`docs/EIS Solver Vault/AI Handoff.md`](docs/EIS%20Solver%20Vault/AI%20Handoff.md)
 before changing the inference engine.
 
+Current release candidate: `0.9.0`. The v1 scope and release gates are defined
+in `docs/EIS Solver Vault/36 Контур выпуска версии 1.md`.
+
 ## TL;DR For The Next Chat
 
 This project analyzes electrochemical impedance spectroscopy (EIS) data, fits equivalent circuits with `impedance.models.circuits.CustomCircuit`, plots Nyquist curves, and saves fit reports.
@@ -18,6 +21,16 @@ Current architecture direction:
 - `eis_utils.py` - compatibility wrapper for old imports.
 - `eis_cli.py` - CLI entrypoint.
 - `eis_qt.py` - active desktop GUI entrypoint based on PySide6/Qt.
+- `eis_rational.py` - stable/passive engineering impedance representation
+  derived from the scientific ECM response, never independently from raw data.
+- `eis_spice.py` - portable R/C/L network export and automated SPICE
+  validation.
+- `eis_spice_benchmark.py` - frozen calibration/holdout corpus runner with
+  minimal passing-order selection and fail-closed engineering gates.
+- `eis_spice_export.py` - atomic validated user package containing
+  `model.lib` and a strict JSON passport.
+- `eis_controller.py` - discrete passive state model plus atomic C package
+  generation for physical `float32` and normalized Q31 implementations.
 - `eis_app.py` - legacy launch wrapper that redirects old GUI launches to `eis_qt.py`.
 - `eis.py` - legacy CLI script kept for behavior comparison.
 - `eis_desktop.py` - removed customtkinter prototype.
@@ -31,9 +44,22 @@ CLI:
 .venv\Scripts\python.exe eis_cli.py "file.mpr" --channel Z1 --no-plot
 .venv\Scripts\python.exe eis_cli.py sample_data --recursive --format jsonl --output artifacts\sample_batch
 .venv\Scripts\python.exe eis_cli.py dataset.csv --preset interface --format json --output result.json
+.venv\Scripts\python.exe eis_cli.py dataset.csv --spice-export artifacts\cell_spice --ngspice C:\path\to\ngspice_con.exe
+.venv\Scripts\python.exe eis_cli.py dataset.csv --controller-export artifacts\cell_controller --sample-period-us 100 --current-full-scale-a 10
+.venv\Scripts\python.exe eis_release_check.py --require-packaged --packaged-exe dist\eis_qt\eis_qt.exe
 ```
 
 The headless CLI accepts one or more files/directories, continues after bad inputs by default, and supports `text`, `json`, `jsonl`, and `csv` output. JSONL output is appended after every completed file so interrupted batch runs keep partial results. The default `--preset auto` now routes each spectrum to physically plausible circuit families and records its evidence in `metadata.circuit_routing`; named presets and `--circuit` remain fixed and reproducible. Use `--mode parse` or `--mode kk` to isolate input and data-validity checks, and `--fail-fast` when early termination is desired.
+
+Validated SPICE export is intentionally single-file. It refuses missing
+ngspice, rejected scientific/KK status, failed engineering gates, and existing
+target directories. A successful target directory contains `model.lib` and
+`passport.json`.
+
+Controller export is also single-file and fail-closed. One successful package
+contains C99 source/header pairs for `float32` and Q31, shared reference
+vectors, and a strict passport. The sample period and full-scale current are
+mandatory. The default validated band is capped at 1% of the sample rate.
 
 GUI:
 
@@ -91,6 +117,9 @@ Scientific playbook pages:
 - `23 Kramers-Kronig Validation.md`
 - `24 Глоссарий.md`
 - `26 Где лежит истина - статистический вывод и иерархический EIS.md`
+- `34 SPICE и инженерные макромодели.md`
+- `35 Экспорт C для контроллеров.md`
+- `36 Контур выпуска версии 1.md`
 
 The source PDF `Introductory impedance spectroscopy.pdf` is treated as local reference material and is ignored by git. The notes are Russian project-oriented summaries, not a verbatim copy.
 
@@ -180,6 +209,43 @@ Supported elements in `build_bounds_and_guess()`:
 
 - Opt-in centered complex residual bootstrap and weighted profile-likelihood intervals for a chosen spectrum/circuit.
 
+`eis_identifiability.py` / `eis_window_replication.py`:
+
+- Benchmark-only frequency-window stability and characteristic-support gate.
+- Reproducible truth-aware replication over CPE/Wo positions, noise levels,
+  and paired seeds; it does not publish calibrated production intervals.
+
+`eis_wo_guardband.py`:
+
+- Frozen calibration/holdout benchmark for a process-aware `Wo` upper-edge
+  guard band; holdout cannot reselect the calibration threshold.
+
+`eis_grid_density.py`:
+
+- Final v1 benchmark of Wo window stability versus points per decade and
+  frozen 10%/20% trim subsets.
+
+`eis_rational.py` / `eis_spice.py`:
+
+- First engineering realization layer after the scientific ECM:
+  `Z_ECM(f) -> stable passive rational model -> series R/C/L network -> .subckt`.
+- The scientific ECM and engineering model remain separate results with
+  separate validity and error criteria.
+- Automated ngspice 46 batch AC round-trip is implemented and passed the first
+  four-model pilot; the portable runtime stays outside git and is supplied
+  explicitly.
+- The frozen 18-scenario engineering corpus passed 5/6 calibration cases and
+  11/12 holdout cases, including all 6/6 ECMs derived from real LiPo spectra.
+  Both refusals were double-CPE cases whose SPICE numerical agreement worsened
+  as order increased; see
+  `validation_data/reports/2026-07-19-spice-engineering-corpus-v1.md`.
+- Band-aware global error-budget pruning now removes weak Foster sections only
+  while the complete realization stays within 0.25% of the rational model.
+  A new frozen 22-scenario corpus passed 6/6 calibration and 14/16 holdout
+  cases, including 6/6 new real-data ECMs. The external ngspice gate remains
+  1e-6%; see
+  `validation_data/reports/2026-07-19-spice-conditioning-corpus-v2.md`.
+
 `eis_drt.py`:
 
 - Topology-independent non-negative ridge DRT with hidden-frequency regularization selection and measured-band peak flags.
@@ -217,8 +283,15 @@ Supported elements in `build_bounds_and_guess()`:
 - Provides an impedance-channel dropdown when multiple channels are detected.
 - Multi-analysis runs in a Qt worker thread with per-circuit progress and cooperative cancel controls. Cancel takes effect after the current circuit finishes.
 - Provides two circuit preset menus: `Interface` for ideal RC/CPE/charge-transfer/two-arc models and `Transport` for Warburg/diffusion/inductive models.
-- `Run selected` fits the chosen preset union; `Run auto-fit` still fits the full default circuit list for lazy/complete screening.
+- `Run selected` fits the chosen preset union; `Run auto-fit` uses the same
+  two-tier `adaptive_v2` contract as the CLI.
 - The preset menus and manual circuit input live behind `Pro mode`; the default workflow only exposes file loading, auto-fit, cancel, and export.
+- Validated SPICE package export is a toolbar-only specialist action. It is
+  completely hidden outside `Pro mode` and has no duplicate main-menu or
+  workspace button.
+- Validated controller C export is hidden beside the SPICE action. It asks
+  for sample period and current full scale, then emits both `float32` and Q31
+  implementations from the same discrete model.
 - Manual circuit mode accepts one `impedance.py` circuit string and includes a `?` help button with syntax examples.
 - Manual circuit mode can fill and edit `Initial`, `Lower`, and `Upper` parameter values before fitting.
 - `Open folder` recursively loads supported `.mpr`, `.mpt`, `.txt`, `.csv`, and `.dat` files for batch analysis.
@@ -254,7 +327,11 @@ Supported elements in `build_bounds_and_guess()`:
 - `eis_desktop.py` was removed after the PySide6 migration.
 - `eis_utils.py` still contains old mojibake history, but its final definitions delegate to the new parser/core layer.
 - `galvani` is GPL-3.0-or-later. Revisit licensing if this becomes a distributed closed-source executable.
-- No formal automated test suite yet.
+- The automated `unittest` suite currently contains 129 passing tests.
+- `eis_release_check.py` is the executable release-candidate acceptance
+  contract for source, packaged GUI, BioLogic parsing, SPICE, and controller C.
+- Public distribution is blocked until the owner chooses licensing compatible
+  with bundled `galvani` (GPL-3.0-or-later) and PySide6 terms.
 - Each nonlinear circuit fit has a production budget of 5,000 function evaluations with practical tolerances; the upstream `impedance.py` defaults (100,000 evaluations and `ftol=1e-13`) are intentionally not used.
 - Parser cleaning rejects non-positive frequencies and median-aggregates exact duplicate frequencies while recording the operation in parser metadata.
 
@@ -264,10 +341,11 @@ Supported elements in `build_bounds_and_guess()`:
 2. Convert `eis.py` into a thin wrapper around `eis_cli.py`, or remove it after behavior is confirmed.
 3. Validate selectable impedance channels on real BioLogic files with Zce/Zstack/Zwe-ce/Z1/Z2 columns.
 4. Expand Russian localization coverage for long help text and domain messages if needed.
-5. Add parser and bounds-generation tests.
-6. Add import/export for Pro preset JSON files if sharing presets between machines becomes useful.
-7. Decide whether cycling/OCV analysis is needed; if yes, rebuild it as a separate module from scratch.
-8. Extend the validated BioLogic `.mpr` coverage to additional instruments, channels, and multi-cycle files.
+5. Run the `0.9.0` folder build on a separate clean Windows machine.
+6. Choose the project distribution license before publishing binaries.
+7. Add import/export for Pro preset JSON files if sharing presets between machines becomes useful.
+8. Decide whether cycling/OCV analysis is needed; if yes, rebuild it as a separate module from scratch.
+9. Extend the validated BioLogic `.mpr` coverage to additional instruments, channels, and multi-cycle files.
 
 ## Rules For Future AI Chats
 
@@ -344,6 +422,26 @@ Open-data validation baseline (2026-07-17):
   7 refusals across strong cells plus negative controls; exact `W/Wo/Ws`
   remains unrecommended pending broader calibration;
 - report: `validation_data/reports/2026-07-17-diffusion-observability-map.md`.
+- replicated the unchanged frequency-window identifiability gate on 210
+  CPE/Wo spectra across five seeds, three noise levels, and seven positions;
+  it produced `0/60` outside-window false passes and retained `84/90`
+  strictly interior scenarios, but only `25/60` exact-edge scenarios;
+- parameter-identification statuses remain benchmark-only because interval
+  coverage is still undercalibrated; report:
+  `validation_data/reports/2026-07-18-frequency-window-identifiability-replication.md`.
+- a frozen 0.4-decade `Wo` upper-edge guard passed calibration at `207/216`
+  retention with `0/216` false passes, but failed independent holdout at
+  `183/216` retention; all 33 misses came from window instability and were
+  concentrated on the 41-point grid;
+- no guard was promoted to production; report:
+  `validation_data/reports/2026-07-18-wo-upper-edge-guardband-holdout.md`.
+- the final 945-spectrum density map found no monotone point-density threshold:
+  combined 10%/20% trimming retained `828/945`, while 10%-only retained
+  `931/945`; the 20% trim removes a fixed fraction of log-frequency span, so
+  denser sampling did not solve the information loss;
+- the parameter-uncertainty branch is closed for v1: `confidence` remains a
+  local fit diagnostic, and calibrated parameter statuses are not exported;
+  report: `validation_data/reports/2026-07-18-wo-grid-density-final.md`.
 
 First soft refactor completed:
 

@@ -2,14 +2,17 @@ import csv
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 import numpy as np
 
 import eis_cli
+from eis_controller import ControllerPackageResult
 from eis_core import DatasetScale, FitResult, KramersKronigResult
 from eis_pipeline import AnalysisResult, discover_input_files, fit_result_dict
+from eis_spice_export import SpicePackageResult
 
 
 class _Model:
@@ -129,6 +132,119 @@ class PipelineCliTests(unittest.TestCase):
                 rows = list(csv.DictReader(handle))
             self.assertEqual(rows[0]["best_circuit"], "R0-p(R1,C1)")
             self.assertEqual(rows[0]["kk_status"], "PASS")
+
+    @patch("eis_cli.export_spice_package")
+    @patch("eis_cli.load_eis_file")
+    @patch("eis_cli.analyze_file")
+    def test_single_file_spice_export_uses_validated_package_path(
+        self,
+        analyze_mock,
+        load_mock,
+        export_mock,
+    ):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "a.csv"
+            source.write_text("x", encoding="utf-8")
+            target = Path(temp_dir) / "spice-package"
+            analyze_mock.return_value = successful_result(str(source))
+            load_mock.return_value = SimpleNamespace(frequencies=np.logspace(-1, 4, 12))
+            export_mock.return_value = SpicePackageResult(
+                str(target),
+                str(target / "model.lib"),
+                str(target / "passport.json"),
+                12,
+                "46",
+            )
+
+            code = eis_cli.run([
+                str(source),
+                "--spice-export",
+                str(target),
+                "--ngspice",
+                "ngspice",
+                "--quiet",
+            ])
+
+            self.assertEqual(code, eis_cli.EXIT_OK)
+            export_mock.assert_called_once()
+
+    @patch("eis_cli.analyze_file")
+    def test_batch_spice_export_is_rejected_before_analysis(self, analyze_mock):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "a.csv").write_text("x", encoding="utf-8")
+            (root / "b.csv").write_text("x", encoding="utf-8")
+
+            code = eis_cli.run([
+                str(root),
+                "--spice-export",
+                str(root / "package"),
+                "--quiet",
+            ])
+
+            self.assertEqual(code, eis_cli.EXIT_ARGUMENT_ERROR)
+            analyze_mock.assert_not_called()
+
+    @patch("eis_cli.export_controller_package")
+    @patch("eis_cli.load_eis_file")
+    @patch("eis_cli.analyze_file")
+    def test_single_file_controller_export_passes_scales(
+        self,
+        analyze_mock,
+        load_mock,
+        export_mock,
+    ):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "a.csv"
+            source.write_text("x", encoding="utf-8")
+            target = Path(temp_dir) / "controller-package"
+            analyze_mock.return_value = successful_result(str(source))
+            load_mock.return_value = SimpleNamespace(frequencies=np.logspace(-1, 4, 12))
+            export_mock.return_value = ControllerPackageResult(
+                str(target),
+                str(target / "eis_model_f32.h"),
+                str(target / "eis_model_f32.c"),
+                str(target / "eis_model_q31.h"),
+                str(target / "eis_model_q31.c"),
+                str(target / "passport.json"),
+                12,
+                8,
+            )
+
+            code = eis_cli.run([
+                str(source),
+                "--controller-export",
+                str(target),
+                "--sample-period-us",
+                "100",
+                "--current-full-scale-a",
+                "20",
+                "--controller-max-frequency-hz",
+                "50",
+                "--quiet",
+            ])
+
+            self.assertEqual(code, eis_cli.EXIT_OK)
+            call = export_mock.call_args
+            self.assertAlmostEqual(call.kwargs["sample_period_s"], 100e-6)
+            self.assertEqual(call.kwargs["current_full_scale_a"], 20.0)
+            self.assertEqual(call.kwargs["max_frequency_hz"], 50.0)
+
+    @patch("eis_cli.analyze_file")
+    def test_controller_export_requires_period_and_current_scale(self, analyze_mock):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "a.csv"
+            source.write_text("x", encoding="utf-8")
+
+            code = eis_cli.run([
+                str(source),
+                "--controller-export",
+                str(Path(temp_dir) / "controller-package"),
+                "--quiet",
+            ])
+
+            self.assertEqual(code, eis_cli.EXIT_ARGUMENT_ERROR)
+            analyze_mock.assert_not_called()
 
 
 if __name__ == "__main__":

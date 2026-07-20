@@ -177,6 +177,132 @@ class AnalysisResult:
         }
 
 
+@dataclass
+class SpectrumFitOutcome:
+    fits: list[FitResult]
+    best: FitResult | None
+    routing_metadata: dict
+    cancelled: bool = False
+
+
+def fit_spectrum(
+    frequencies,
+    z_data,
+    *,
+    circuits: Iterable[str] | None = DEFAULT_CIRCUITS,
+    parameter_overrides_by_circuit=None,
+    max_fit_evaluations: int = 5_000,
+    fit_tolerance: float = 1e-9,
+    fit_restarts: int = 1,
+    restart_seed: int = 0,
+    on_result=None,
+    on_tier=None,
+    should_cancel=None,
+) -> SpectrumFitOutcome:
+    """Fit one loaded spectrum through the shared explicit/adaptive contract."""
+
+    adaptive = circuits is None
+    if adaptive:
+        routing = route_circuit_candidates(frequencies, z_data)
+        selected_circuits = tuple(routing.circuits)
+        metadata = {
+            "mode": "adaptive_v2",
+            "families": list(routing.families),
+            "candidate_count": len(selected_circuits),
+            "features": routing.features,
+            "tiers": [{
+                "tier": 1,
+                "families": list(routing.families),
+                "circuits": list(selected_circuits),
+                "features": routing.features,
+            }],
+        }
+    else:
+        selected_circuits = tuple(circuits)
+        metadata = {
+            "mode": "explicit",
+            "families": [],
+            "candidate_count": len(selected_circuits),
+            "features": {},
+        }
+    if not selected_circuits:
+        raise ValueError("At least one circuit is required for fitting.")
+    if on_tier is not None:
+        on_tier(1, selected_circuits, metadata)
+
+    fits = fit_circuits(
+        frequencies,
+        z_data,
+        circuits=selected_circuits,
+        parameter_overrides_by_circuit=parameter_overrides_by_circuit,
+        max_fit_evaluations=max_fit_evaluations,
+        fit_tolerance=fit_tolerance,
+        fit_restarts=fit_restarts,
+        restart_seed=restart_seed,
+        on_result=on_result,
+        should_cancel=should_cancel,
+    )
+    cancelled = bool(should_cancel is not None and should_cancel())
+    if cancelled or not fits:
+        return SpectrumFitOutcome(
+            fits=fits,
+            best=choose_best_result(fits) if fits else None,
+            routing_metadata=metadata,
+            cancelled=cancelled,
+        )
+
+    best = choose_best_result(fits)
+    if adaptive:
+        residual_routing = route_residual_candidates(
+            frequencies,
+            z_data,
+            best,
+            routing.families,
+        )
+        new_circuits = tuple(
+            circuit
+            for circuit in residual_routing.circuits
+            if circuit not in selected_circuits
+        )
+        metadata["tiers"].append({
+            "tier": 2,
+            "families": list(residual_routing.families),
+            "circuits": list(new_circuits),
+            "features": residual_routing.features,
+        })
+        if new_circuits:
+            if on_tier is not None:
+                on_tier(2, new_circuits, metadata)
+            fits.extend(fit_circuits(
+                frequencies,
+                z_data,
+                circuits=new_circuits,
+                parameter_overrides_by_circuit=parameter_overrides_by_circuit,
+                max_fit_evaluations=max_fit_evaluations,
+                fit_tolerance=fit_tolerance,
+                fit_restarts=fit_restarts,
+                restart_seed=restart_seed + 10_000,
+                on_result=on_result,
+                should_cancel=should_cancel,
+            ))
+            cancelled = bool(should_cancel is not None and should_cancel())
+            if fits:
+                best = choose_best_result(fits)
+            metadata["families"].extend(
+                family
+                for family in residual_routing.families
+                if family not in metadata["families"]
+            )
+            metadata["candidate_count"] += len(new_circuits)
+
+    return SpectrumFitOutcome(
+        fits=fits,
+        best=best,
+        routing_metadata=metadata,
+        cancelled=cancelled,
+    )
+
+
 def analyze_file(
     file_path: str,
     *,
@@ -213,70 +339,18 @@ def analyze_file(
             return result
 
         result.stage = "fit"
-        if circuits is None:
-            routing = route_circuit_candidates(dataset.frequencies, dataset.z)
-            selected_circuits = routing.circuits
-            result.metadata["circuit_routing"] = {
-                "mode": "adaptive_v2",
-                "families": list(routing.families),
-                "candidate_count": len(routing.circuits),
-                "features": routing.features,
-                "tiers": [],
-            }
-        else:
-            selected_circuits = tuple(circuits)
-            result.metadata["circuit_routing"] = {
-                "mode": "explicit",
-                "families": [],
-                "candidate_count": len(selected_circuits),
-                "features": {},
-            }
-        result.fits = fit_circuits(
+        outcome = fit_spectrum(
             dataset.frequencies,
             dataset.z,
-            circuits=selected_circuits,
+            circuits=circuits,
             max_fit_evaluations=max_fit_evaluations,
             fit_tolerance=fit_tolerance,
             fit_restarts=fit_restarts,
             restart_seed=restart_seed,
         )
-        result.best = choose_best_result(result.fits)
-        if circuits is None:
-            result.metadata["circuit_routing"]["tiers"].append({
-                "tier": 1,
-                "families": list(routing.families),
-                "circuits": list(routing.circuits),
-                "features": routing.features,
-            })
-            residual_routing = route_residual_candidates(
-                dataset.frequencies,
-                dataset.z,
-                result.best,
-                routing.families,
-            )
-            new_circuits = tuple(
-                circuit for circuit in residual_routing.circuits
-                if circuit not in selected_circuits
-            )
-            result.metadata["circuit_routing"]["tiers"].append({
-                "tier": 2,
-                "families": list(residual_routing.families),
-                "circuits": list(new_circuits),
-                "features": residual_routing.features,
-            })
-            if new_circuits:
-                result.fits.extend(fit_circuits(
-                    dataset.frequencies,
-                    dataset.z,
-                    circuits=new_circuits,
-                    max_fit_evaluations=max_fit_evaluations,
-                    fit_tolerance=fit_tolerance,
-                    fit_restarts=fit_restarts,
-                    restart_seed=restart_seed + 10_000,
-                ))
-                result.best = choose_best_result(result.fits)
-                result.metadata["circuit_routing"]["families"].extend(residual_routing.families)
-                result.metadata["circuit_routing"]["candidate_count"] += len(new_circuits)
+        result.fits = outcome.fits
+        result.best = outcome.best
+        result.metadata["circuit_routing"] = outcome.routing_metadata
         result.success = True
         result.stage = "complete"
         return result

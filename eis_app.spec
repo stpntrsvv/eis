@@ -1,12 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_submodules, copy_metadata
+
+
+hiddenimports = collect_submodules('galvani')
+datas = (
+    copy_metadata('galvani')
+    + copy_metadata('impedance')
+    + [('THIRD_PARTY_NOTICES.md', '.')]
+)
 
 a = Analysis(
     ['eis_qt.py'],
     pathex=[],
     binaries=[],
-    datas=[],
-    hiddenimports=[],
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

@@ -29,6 +29,31 @@ This page records what has been validated so far and what should become formal t
 - Headless pipeline tests cover JSON-safe parameter serialization, recursive input discovery, continuation after a bad file, fail-fast persistence, and CSV summaries.
 - CLI JSON smoke passed on the BioLogic `EIS_latin1.mpt` sample.
 - Full 17-circuit MPR CLI run completed in about 4.8 seconds in the macOS diagnostic environment after adding the optimizer budget.
+- Пользовательский пакет SPICE проверен настоящим запуском ngspice 46.
+- Три внеэкранных Qt-теста подтверждают, что действие SPICE скрыто вне
+  расширенного режима, вызывает общий экспортёр и восстанавливается после
+  отказа.
+- Полный набор из 129 автоматических тестов проходит после унификации
+  вычислительного пути GUI и CLI.
+- Сгенерированные варианты `float32` и Q31 собираются GCC на рабочем
+  компьютере в строгом режиме C99 без предупреждений.
+- Исполняемая проверочная программа подтверждает побитовое совпадение Q31
+  с целочисленным имитатором Python.
+- Сквозной экспорт реального двухдугового спектра прошёл ворота частотной
+  ошибки для периода `100 мкс`; целевая сборка и измерение на STM32F103 ещё
+  не выполнялись.
+- Кандидат `0.9.0` собран PyInstaller на Python 3.14.
+- Собранный exe функционально обработал обычный TXT и BioLogic MPT: создание
+  GUI, чтение, KK и реальный подбор завершились с кодом `0`.
+- `galvani` и его полный текст GPL добавлены в каталог сборки явно.
+- Единая команда `eis_release_check.py` прошла GUI, CLI, собранный exe,
+  контроллерный C и настоящий ngspice без отказов.
+
+## Выпускная приёмка
+
+Состав и команда описаны в [[36 Контур выпуска версии 1]]. Текущая приёмка
+подтверждает работоспособность на машине разработки, но не заменяет проверку
+на отдельной чистой Windows-машине.
 
 ## Известный лучший результат на тестовых данных
 

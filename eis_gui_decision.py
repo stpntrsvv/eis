@@ -3,9 +3,36 @@
 from __future__ import annotations
 
 
-def format_reliable_decision(decision: dict | None, language="en") -> dict:
+def format_reliable_decision(
+    decision: dict | None,
+    language="en",
+    *,
+    fit_completed: bool = False,
+) -> dict:
     decision = decision or {}
     if not decision:
+        if fit_completed:
+            return {
+                "status": "pending",
+                "headline": (
+                    "Автоматический подбор завершён. Расширенная проверка надёжности не запускалась."
+                    if language == "ru"
+                    else "Automatic fitting is complete. The extended reliability check was not run."
+                ),
+                "details": (
+                    "Результат подбора доступен на вкладках «Лучшие параметры», "
+                    "«Остатки» и «КК-проверка».\n\n"
+                    "Эта вкладка предназначена для отдельной проверки устойчивости "
+                    "выбора схемы. Отсутствие такой проверки не означает, что подбор "
+                    "не дал результата."
+                    if language == "ru"
+                    else
+                    "The fitting result is available in Best Parameters, Residuals, "
+                    "and KK Check.\n\n"
+                    "This tab is reserved for a separate circuit-selection stability "
+                    "check. Its absence does not mean that fitting produced no result."
+                ),
+            }
         return {
             "status": "not_loaded",
             "headline": (

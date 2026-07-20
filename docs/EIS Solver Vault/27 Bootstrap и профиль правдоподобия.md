@@ -98,3 +98,59 @@ covariance `72,7%`, residual bootstrap `78,8%`, profile likelihood `36,1%`.
 Все `identified` observable CPE и observable `Wo` сохранены. Но residual
 bootstrap coverage observable CPE остаётся `80%`, поэтому это ещё не
 production calibration. [Полный отчёт](../../../validation_data/reports/2026-07-17-frequency-window-identifiability-gate.md).
+
+## Репликация frequency-window gate
+
+Замороженные trim `10/20%` и fold-change `1,5` проверены без изменения на
+`210` новых CPE/`Wo` спектрах: пять paired seeds, шум `0,5/1/2%` и семь
+положений characteristic frequency относительно обоих краёв полосы.
+
+Вне полосы получено `0/60` ложных проходов; односторонняя 95%-граница
+false-pass rate равна `4,8703%`. Строго внутри прошли `84/90` сценариев, но
+ровно на краях — только `25/60`. Для `Wo` даже расстояние в фактор два от
+верхнего края дало `9/15`, с ухудшением при росте шума.
+
+Вывод: формальное попадание characteristic frequency в inclusive диапазон
+недостаточно. Нужна независимо откалиброванная process-aware guard band,
+особенно для верхнего края `Wo`. Текущие 210 строк нельзя использовать
+одновременно для подбора нового порога и заявления о production calibration.
+`calibrated=true` остаётся запрещённым.
+[Полный отчёт](../../../validation_data/reports/2026-07-18-frequency-window-identifiability-replication.md).
+
+## `Wo` guard band: calibration и holdout
+
+На calibration из `432` сценариев минимальный frozen-кандидат `0,4` декады
+дал `207/216` retention и `0/216` ложных проходов. Затем он без права
+переизбрания проверен на `432` holdout-сценариях с новыми seeds, parameters и
+сетками.
+
+Holdout отверг порог: `183/216`, или `84,7%`, при требовании `>=90%`.
+Специфичность осталась высокой (`0/216` false pass), но все 33 пропуска
+получили `frequency_window_stable=false`. На сетке 41 точка retention
+составил `73,1%`, на 81 точке — `96,3%`.
+
+Постфактум `0,6` декады нельзя выбирать по holdout; кроме того, на
+41-точечной страте он удерживает лишь `81,5%`. Значит, найден не просто
+неудачный margin, а зависимость текущей stability-процедуры от плотности
+частотной сетки. Production parameter-status остаются запрещены.
+[Полный отчёт](../../../validation_data/reports/2026-07-18-wo-upper-edge-guardband-holdout.md).
+
+## Финальная grid-density map и решение v1
+
+Последний timeboxed benchmark содержит `945` новых `Wo`-сценариев при
+`8–33,3 points/decade`. Ни одна density-страта не прошла замороженный
+combined `trim 10/20%` criterion. Общий retention:
+
+- trim 10%: `931/945 = 98,5%`;
+- trim 20%: `830/945 = 87,8%`;
+- combined: `828/945 = 87,6%`.
+
+Уплотнение сетки не решило проблему: 20%-trim удаляет одну и ту же долю
+логарифмической полосы, а не фиксированное число физических герц. Выбирать
+10%-only по финальному корпусу нельзя, и window stability всё равно не
+исправляет ранее доказанное undercoverage интервалов.
+
+Для v1 ветка закрыта: `confidence` остаётся локальной ошибкой fit,
+`identified/weak/unbounded` и `calibrated=true` не публикуются, а новые
+эвристики не задерживают release.
+[Полный отчёт](../../../validation_data/reports/2026-07-18-wo-grid-density-final.md).

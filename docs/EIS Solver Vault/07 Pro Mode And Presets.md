@@ -1,22 +1,54 @@
 # Расширенный режим и пресеты
 
-Pro mode is for users who know what physical model they want.
+Расширенный режим предназначен для пользователей, которые понимают, какую
+физическую модель хотят проверить.
 
-It is hidden by default so normal users can just load data and run auto-fit.
+По умолчанию он скрыт: обычный сценарий ограничивается загрузкой данных и
+автоматическим подбором.
 
 ## Возможности расширенного режима
 
-- Interface preset menu.
-- Transport preset menu.
-- Run selected presets.
-- Manual circuit string input.
-- `?` syntax help button.
-- Initial/Lower/Upper parameter table.
-- Local preset save/load/delete.
+- наборы схем границы раздела;
+- наборы транспортных и индуктивных схем;
+- запуск только выбранных наборов;
+- ручной ввод строки схемы;
+- кнопка `?` со справкой по синтаксису;
+- таблица начальных значений, нижних и верхних границ;
+- локальное сохранение, загрузка и удаление пресетов;
+- специализированный экспорт проверенного пакета SPICE;
+- экспорт проверенного пакета C для контроллера в вариантах `float32` и Q31.
+
+## Экспорт SPICE
+
+Действие `Пакет SPICE...` находится в конце основной панели инструментов.
+Оно:
+
+- полностью скрыто вне расширенного режима;
+- не дублируется в главном меню или обычной панели экспорта;
+- становится доступным только после подбора модели для выбранного спектра;
+- просит указать новый каталог пакета и исполняемый файл ngspice;
+- использует тот же безопасный экспортёр, что и командная строка;
+- при отказе не создаёт частичный пакет.
+
+Это намеренно специализированный инструмент. Обычному пользователю SPICE не
+показывается.
+
+## Экспорт C для контроллера
+
+Действие `Пакет C для контроллера...` находится там же, рядом со SPICE. Оно:
+
+- полностью скрыто вне расширенного режима;
+- просит новый каталог, период расчёта и полный масштаб тока;
+- одним пакетом выдаёт физический вариант `float32` и нормированный Q31;
+- добавляет паспорт модели и эталонные временные векторы;
+- отказывает при недопустимой научной модели, полосе, ошибке дискретизации
+  или непредставимых коэффициентах.
+
+Подробный численный договор: [[35 Экспорт C для контроллеров]].
 
 ## Синтаксис ручной схемы
 
-Examples:
+Примеры:
 
 ```text
 R0-p(R1,CPE0)
@@ -25,51 +57,53 @@ R0-p(R1,CPE0)-W0
 L0-R0-p(R1,CPE0)
 ```
 
-Rules:
+Правила:
 
-- `-` means series connection.
-- `p(...,...)` means parallel connection.
-- Supported elements: `R`, `C`, `CPE`, `W`, `Wo`, `Ws`, `L`.
-- Index suffixes matter: `R0`, `R1`, `CPE0`, `CPE1`.
+- `-` означает последовательное соединение;
+- `p(...,...)` означает параллельное соединение;
+- поддерживаются элементы `R`, `C`, `CPE`, `W`, `Wo`, `Ws`, `L`;
+- индексы значимы: `R0`, `R1`, `CPE0`, `CPE1`.
 
 ## Настройка начальных значений и границ
 
 ```mermaid
 sequenceDiagram
-    participant User
+    participant User as Пользователь
     participant GUI
-    participant Core as eis_core
-    participant Store as local preset JSON
+    participant Core as Ядро eis_core
+    participant Store as Локальный JSON пресетов
 
-    User->>GUI: Enter circuit string
-    User->>GUI: Fill guesses
+    User->>GUI: Ввести строку схемы
+    User->>GUI: Заполнить оценки
     GUI->>Core: build_bounds_and_guess(circuit, scale)
-    Core-->>GUI: parameter table
-    User->>GUI: Edit Initial/Lower/Upper
-    User->>GUI: Run manual
+    Core-->>GUI: Таблица параметров
+    User->>GUI: Изменить начальные значения и границы
+    User->>GUI: Запустить ручной подбор
     GUI->>Core: fit_circuits(..., parameter_overrides)
-    User->>GUI: Save preset
+    User->>GUI: Сохранить пресет
     GUI->>Store: pro_presets.json
 ```
 
 ## Хранение пресетов
 
-Primary Windows path:
+Основной путь в Windows:
 
 ```text
 %APPDATA%\EIS Solver\pro_presets.json
 ```
 
-Fallback:
+Запасной путь:
 
 ```text
 .eis_solver_user/pro_presets.json
 ```
 
-The app checks real write access before choosing the config directory.
+Перед выбором каталога программа проверяет фактический доступ на запись.
 
 ## Почему пресеты хранятся локально
 
-Local presets keep user-specific lab habits off git and out of shared releases.
+Локальные пресеты не смешивают личные лабораторные привычки с Git и общими
+сборками программы.
 
-If preset sharing becomes important later, add explicit import/export for preset JSON files.
+Если обмен пресетами станет важен, нужно добавить явный импорт и экспорт их
+JSON-файлов.

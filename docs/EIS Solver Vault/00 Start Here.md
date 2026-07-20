@@ -52,6 +52,9 @@ status: active
 | [[24 Глоссарий]] | единый словарь терминов, сокращений и обозначений проекта |
 | [[25 Пакетный конвейер и CLI]] | массовый headless-анализ, JSONL/CSV и коды завершения |
 | [[26 Где лежит истина - статистический вывод и иерархический EIS]] | границы EIS, Байес, DRT, нейросети и анализ серий |
+| [[34 SPICE и инженерные макромодели]] | научная ECM → пассивная рациональная модель → сеть Фостера R/C/L → SPICE |
+| [[35 Экспорт C для контроллеров]] | дискретные состояния, `float32`, Q31, масштабы и ворота выдачи |
+| [[36 Контур выпуска версии 1]] | состав версии 1, автоматическая приёмка, сборка и оставшиеся ворота |
 
 ## Карта Проекта
 
@@ -67,16 +70,19 @@ EIS Solver Map.canvas
 
 ```mermaid
 flowchart LR
-    A[Raw EIS files] --> B[eis_io.py parser]
-    B --> K[KK / Lin-KK validation]
-    K --> C[eis_core.py fitting]
-    C --> D[eis_qt.py GUI]
-    D --> E[Plots]
-    D --> F[Diagnostics]
-    D --> G[CSV/XLSX export]
-    D --> H[Pro presets]
-    C --> I[Scientific assumptions]
-    I --> J[Validity checklist]
+    A[Исходные файлы EIS] --> B[eis_io.py чтение]
+    B --> K[Проверка KK / Lin-KK]
+    K --> C[eis_core.py подбор схемы]
+    C --> S[eis_rational.py инженерная модель]
+    S --> P[eis_spice.py подсхема R/C/L]
+    S --> M[eis_controller.py код C: float32 и Q31]
+    C --> D[eis_qt.py интерфейс]
+    D --> E[Графики]
+    D --> F[Диагностика]
+    D --> G[Экспорт CSV/XLSX]
+    D --> H[Расширенные шаблоны]
+    C --> I[Научные допущения]
+    I --> J[Проверка допустимости]
     J --> G
 ```
 

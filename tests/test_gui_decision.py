@@ -41,6 +41,10 @@ class GuiDecisionTests(unittest.TestCase):
     def test_legacy_or_missing_decision_is_safe(self):
         missing = format_reliable_decision(None)
         self.assertEqual(missing["status"], "not_loaded")
+        completed_fit = format_reliable_decision(None, language="ru", fit_completed=True)
+        self.assertEqual(completed_fit["status"], "pending")
+        self.assertIn("подбор завершён", completed_fit["headline"])
+        self.assertIn("не означает", completed_fit["details"])
         legacy = format_reliable_decision({
             "verdict": "recommended",
             "recommended_topology": "R0-p(R1,CPE0)",

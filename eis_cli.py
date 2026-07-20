@@ -19,6 +19,10 @@ from eis_core import (
     SIMPLE_CIRCUITS,
 )
 from eis_pipeline import AnalysisResult, analyze_file, discover_input_files, dumps_result
+from eis_io import load_eis_file
+from eis_version import __version__
+from eis_controller import ControllerExportRefused, export_controller_package
+from eis_spice_export import SpiceExportRefused, export_spice_package
 
 
 EXIT_OK = 0
@@ -26,6 +30,7 @@ EXIT_INTERNAL_ERROR = 1
 EXIT_ARGUMENT_ERROR = 2
 EXIT_INPUT_FAILURE = 3
 EXIT_FIT_FAILURE = 4
+EXIT_EXPORT_FAILURE = 5
 
 PRESETS = {
     "auto": None,
@@ -41,6 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Analyze one EIS file or a batch of files without the GUI.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+    parser.add_argument("--version", action="version", version=f"EIS Solver {__version__}")
     parser.add_argument("inputs", nargs="*", help="Files or directories to analyze.")
     parser.add_argument("--recursive", action="store_true", help="Search input directories recursively.")
     parser.add_argument("--channel", help="Impedance channel: Z, Z1, Z2, Zce, Zstack or Zwe-ce.")
@@ -54,6 +60,33 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--restart-seed", type=int, default=0, help="Seed for multi-start guesses.")
     parser.add_argument("--format", choices=("text", "json", "jsonl", "csv"), default="text")
     parser.add_argument("--output", help="Output file, or output directory for batch artifacts.")
+    parser.add_argument(
+        "--spice-export",
+        help="Atomically create a validated SPICE package directory for one input file.",
+    )
+    parser.add_argument(
+        "--ngspice",
+        help="Path to the ngspice console executable used by --spice-export.",
+    )
+    parser.add_argument(
+        "--controller-export",
+        help="Atomically create a validated C package with float32 and Q31 implementations.",
+    )
+    parser.add_argument(
+        "--sample-period-us",
+        type=float,
+        help="Controller sample period in microseconds.",
+    )
+    parser.add_argument(
+        "--current-full-scale-a",
+        type=float,
+        help="Current represented by full scale in amperes.",
+    )
+    parser.add_argument(
+        "--controller-max-frequency-hz",
+        type=float,
+        help="Optional upper validation frequency for the controller model.",
+    )
     parser.add_argument("--summary-only", action="store_true", help="Omit all-fit details from JSON/JSONL.")
     parser.add_argument("--fail-fast", action="store_true", help="Stop after the first failed input.")
     parser.add_argument("--quiet", action="store_true", help="Suppress progress messages on stderr.")
@@ -165,6 +198,30 @@ def run(argv: list[str] | None = None) -> int:
     if not files:
         print("Input error: no supported EIS files found.", file=sys.stderr)
         return EXIT_INPUT_FAILURE
+    engineering_export = args.spice_export or args.controller_export
+    if engineering_export and len(files) != 1:
+        print("Engineering export error: exactly one input file is required.", file=sys.stderr)
+        return EXIT_ARGUMENT_ERROR
+    if engineering_export and args.mode != "analyze":
+        print("Engineering export error: --mode must be analyze.", file=sys.stderr)
+        return EXIT_ARGUMENT_ERROR
+    if args.controller_export and (
+        args.sample_period_us is None
+        or args.sample_period_us <= 0
+        or args.current_full_scale_a is None
+        or args.current_full_scale_a <= 0
+        or (
+            args.controller_max_frequency_hz is not None
+            and args.controller_max_frequency_hz <= 0
+        )
+    ):
+        print(
+            "Controller export error: positive --sample-period-us and "
+            "--current-full-scale-a are required; the optional maximum "
+            "frequency must also be positive.",
+            file=sys.stderr,
+        )
+        return EXIT_ARGUMENT_ERROR
 
     output = resolve_output_path(args.output, args.format, batch=len(files) > 1)
     stream_jsonl = args.format == "jsonl" and output is not None
@@ -202,6 +259,49 @@ def run(argv: list[str] | None = None) -> int:
     failures = [result for result in results if not result.success]
     if failures:
         return EXIT_FIT_FAILURE if all(result.stage == "fit" for result in failures) else EXIT_INPUT_FAILURE
+    dataset = None
+    if engineering_export:
+        try:
+            dataset = load_eis_file(files[0], channel=args.channel)
+        except (OSError, ValueError) as exc:
+            print(f"Engineering export refused: {exc}", file=sys.stderr)
+            return EXIT_EXPORT_FAILURE
+    if args.spice_export:
+        try:
+            package = export_spice_package(
+                results[0],
+                dataset.frequencies,
+                args.spice_export,
+                source_file=files[0],
+                ngspice_executable=args.ngspice,
+            )
+        except (OSError, ValueError, SpiceExportRefused) as exc:
+            print(f"SPICE export refused: {exc}", file=sys.stderr)
+            return EXIT_EXPORT_FAILURE
+        if not args.quiet:
+            print(
+                f"SPICE package validated: {package.package_directory}",
+                file=sys.stderr,
+            )
+    if args.controller_export:
+        try:
+            package = export_controller_package(
+                results[0],
+                dataset.frequencies,
+                args.controller_export,
+                sample_period_s=args.sample_period_us * 1e-6,
+                current_full_scale_a=args.current_full_scale_a,
+                max_frequency_hz=args.controller_max_frequency_hz,
+                source_file=files[0],
+            )
+        except (OSError, ValueError, ControllerExportRefused) as exc:
+            print(f"Controller export refused: {exc}", file=sys.stderr)
+            return EXIT_EXPORT_FAILURE
+        if not args.quiet:
+            print(
+                f"Controller C package validated: {package.package_directory}",
+                file=sys.stderr,
+            )
     return EXIT_OK
 
 

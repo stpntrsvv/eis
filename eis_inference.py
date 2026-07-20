@@ -141,11 +141,12 @@ def build_inference_decision(*, fast_result: dict, topology: dict | None = None,
     }
 
 
-def run_inference(file_path, *, mode="fast", circuits=None, bootstrap_samples=30,
+def run_inference(file_path, *, mode="fast", channel=None, circuits=None, bootstrap_samples=30,
                   drt_stability_samples=30, seed=0, max_evaluations=2000,
                   topology_report=None, drt_report=None, resolution_report=None):
     circuits = None if circuits is None else list(dict.fromkeys(circuits))
-    analysis = analyze_file(file_path, circuits=circuits, fit_restarts=3 if mode == "reliable" else 1,
+    analysis = analyze_file(file_path, channel=channel, circuits=circuits,
+                            fit_restarts=3 if mode == "reliable" else 1,
                             restart_seed=seed, max_fit_evaluations=max_evaluations)
     fast_payload = analysis.to_dict()
     topology = _read_json(topology_report)
@@ -155,7 +156,7 @@ def run_inference(file_path, *, mode="fast", circuits=None, bootstrap_samples=30
     resolution = _read_json(resolution_report)
 
     if mode == "reliable" and analysis.success:
-        dataset = load_eis_file(file_path)
+        dataset = load_eis_file(file_path, channel=channel)
         if topology is None:
             bootstrap_circuits = [fit.circuit_string for fit in analysis.fits]
             if len(bootstrap_circuits) >= 2:
@@ -193,6 +194,7 @@ def main(argv=None):
     parser.add_argument("file")
     parser.add_argument("--output", required=True)
     parser.add_argument("--mode", choices=("fast", "reliable"), default="fast")
+    parser.add_argument("--channel", help="Impedance channel to analyze.")
     parser.add_argument("--circuit", action="append")
     parser.add_argument("--bootstrap-samples", type=int, default=30)
     parser.add_argument("--drt-stability-samples", type=int, default=30)
@@ -203,7 +205,7 @@ def main(argv=None):
     parser.add_argument("--resolution-report", help="Attach a calibrated resolution-map JSON")
     args = parser.parse_args(argv)
     result = run_inference(
-        args.file, mode=args.mode, circuits=args.circuit,
+        args.file, mode=args.mode, channel=args.channel, circuits=args.circuit,
         bootstrap_samples=args.bootstrap_samples, drt_stability_samples=args.drt_stability_samples,
         seed=args.seed, max_evaluations=args.max_evaluations,
         topology_report=args.topology_report, drt_report=args.drt_report,
