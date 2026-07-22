@@ -326,7 +326,9 @@ class AboutGuideDialog(QDialog):
     def guide_text(language):
         if language == "ru":
             return (
-                "EIS Solver\n"
+                f"EIS Solver {__version__}\n"
+                "Copyright © 2026 Stepan Tarasov (stpntrsvv)\n"
+                "GNU GPL v3.0 or later. Программа поставляется БЕЗ КАКИХ-ЛИБО ГАРАНТИЙ.\n\n"
                 "Рабочая программа для анализа EIS: загрузка спектров, подбор эквивалентных схем, "
                 "Nyquist/Bode/residuals, batch-анализ и экспорт.\n\n"
                 "Быстрый сценарий\n"
@@ -364,7 +366,9 @@ class AboutGuideDialog(QDialog):
             )
 
         return (
-            "EIS Solver\n"
+            f"EIS Solver {__version__}\n"
+            "Copyright © 2026 Stepan Tarasov (stpntrsvv)\n"
+            "GNU GPL v3.0 or later. This program comes with ABSOLUTELY NO WARRANTY.\n\n"
             "A desktop tool for EIS analysis: spectrum loading, equivalent-circuit fitting, "
             "Nyquist/Bode/residual plots, batch analysis, and export.\n\n"
             "Quick workflow\n"

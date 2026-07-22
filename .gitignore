@@ -1,5 +1,7 @@
 .venv/
 .idea/
+.DS_Store
+**/.DS_Store
 __pycache__/
 *.py[cod]
 .matplotlib/
@@ -10,6 +12,9 @@ Introductory impedance spectroscopy.pdf
 
 build/
 dist/
+
+# Local release acceptance passports.
+release-passport*.json
 
 *.log
 *.tmp

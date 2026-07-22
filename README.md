@@ -1,522 +1,219 @@
-# EIS Solver Lab Journal
+# EIS Solver
 
-This README is the compact project journal. Future AI chats should read the
-current operational brief in
-[`docs/EIS Solver Vault/AI Handoff.md`](docs/EIS%20Solver%20Vault/AI%20Handoff.md)
-before changing the inference engine.
+[![Windows build](https://github.com/stpntrsvv/eis/actions/workflows/windows-build.yml/badge.svg)](https://github.com/stpntrsvv/eis/actions/workflows/windows-build.yml)
 
-Current release candidate: `0.9.0`. The v1 scope and release gates are defined
-in `docs/EIS Solver Vault/36 Контур выпуска версии 1.md`.
+**EIS Solver** — настольная программа и CLI для анализа данных
+электрохимической импедансной спектроскопии (EIS). Она читает спектры,
+проверяет их согласованность, подбирает эквивалентные электрические схемы,
+показывает диагностику и экспортирует воспроизводимые результаты.
 
-## TL;DR For The Next Chat
+Текущая версия: **0.9.0 release candidate**. Вычислительный контур и сборка
+прошли приёмку на машине разработки. До номера `1.0.0` остаются проверка на
+чистой Windows-машине и короткая пользовательская приёмка.
 
-This project analyzes electrochemical impedance spectroscopy (EIS) data, fits equivalent circuits with `impedance.models.circuits.CustomCircuit`, plots Nyquist curves, and saves fit reports.
+## Что умеет программа
 
-Current baseline value: the EIS circuit optimizer. The old `cycling.py` file is legacy/scrap from the same repo and is not the foundation for the future app.
+- открывает TXT, CSV, DAT и BioLogic MPT/MPR;
+- находит доступные каналы импеданса и очищает некорректные точки;
+- выполняет Lin-KK-проверку Крамерса—Кронига;
+- автоматически выбирает физически правдоподобные семейства схем;
+- фитит RC, CPE, Warburg и индуктивные модели;
+- сравнивает модели по BIC и показывает статусы `OK`, `WARN`, `BAD`;
+- строит Nyquist, Bode, residual и KK-графики;
+- обрабатывает отдельные файлы и целые каталоги;
+- экспортирует CSV, XLSX, текстовые отчёты и изображения;
+- в Pro mode создаёт проверенные пакеты SPICE и C (`float32`/Q31).
 
-Current architecture direction:
+EIS Solver не объявляет лучшую схему единственной физической истиной.
+Статистика, качество параметров, Lin-KK, bootstrap и DRT являются разными
+источниками свидетельства и должны интерпретироваться вместе с условиями
+эксперимента.
 
-- `eis_core.py` - clean fitting core: circuit lists, scale estimate, bounds/initial guess, fit loop, best-model selection.
-- `eis_io.py` - active EIS file loading layer with SmartStat/generic text plus BioLogic `.mpr/.mpt` support through `galvani`.
-- `eis_utils.py` - compatibility wrapper for old imports.
-- `eis_cli.py` - CLI entrypoint.
-- `eis_qt.py` - active desktop GUI entrypoint based on PySide6/Qt.
-- `eis_rational.py` - stable/passive engineering impedance representation
-  derived from the scientific ECM response, never independently from raw data.
-- `eis_spice.py` - portable R/C/L network export and automated SPICE
-  validation.
-- `eis_spice_benchmark.py` - frozen calibration/holdout corpus runner with
-  minimal passing-order selection and fail-closed engineering gates.
-- `eis_spice_export.py` - atomic validated user package containing
-  `model.lib` and a strict JSON passport.
-- `eis_controller.py` - discrete passive state model plus atomic C package
-  generation for physical `float32` and normalized Q31 implementations.
-- `eis_app.py` - legacy launch wrapper that redirects old GUI launches to `eis_qt.py`.
-- `eis.py` - legacy CLI script kept for behavior comparison.
-- `eis_desktop.py` - removed customtkinter prototype.
+## Быстрый запуск
 
-## Run Commands
+### Готовая Windows-сборка
 
-CLI:
-
-```bash
-.venv\Scripts\python.exe eis_cli.py "double very good eis.txt" --no-plot
-.venv\Scripts\python.exe eis_cli.py "file.mpr" --channel Z1 --no-plot
-.venv\Scripts\python.exe eis_cli.py sample_data --recursive --format jsonl --output artifacts\sample_batch
-.venv\Scripts\python.exe eis_cli.py dataset.csv --preset interface --format json --output result.json
-.venv\Scripts\python.exe eis_cli.py dataset.csv --spice-export artifacts\cell_spice --ngspice C:\path\to\ngspice_con.exe
-.venv\Scripts\python.exe eis_cli.py dataset.csv --controller-export artifacts\cell_controller --sample-period-us 100 --current-full-scale-a 10
-.venv\Scripts\python.exe eis_release_check.py --require-packaged --packaged-exe dist\eis_qt\eis_qt.exe
-```
-
-The headless CLI accepts one or more files/directories, continues after bad inputs by default, and supports `text`, `json`, `jsonl`, and `csv` output. JSONL output is appended after every completed file so interrupted batch runs keep partial results. The default `--preset auto` now routes each spectrum to physically plausible circuit families and records its evidence in `metadata.circuit_routing`; named presets and `--circuit` remain fixed and reproducible. Use `--mode parse` or `--mode kk` to isolate input and data-validity checks, and `--fail-fast` when early termination is desired.
-
-Validated SPICE export is intentionally single-file. It refuses missing
-ngspice, rejected scientific/KK status, failed engineering gates, and existing
-target directories. A successful target directory contains `model.lib` and
-`passport.json`.
-
-Controller export is also single-file and fail-closed. One successful package
-contains C99 source/header pairs for `float32` and Q31, shared reference
-vectors, and a strict passport. The sample period and full-scale current are
-mandatory. The default validated band is capped at 1% of the sample rate.
-
-GUI:
-
-```bash
-.venv\Scripts\python.exe eis_qt.py
-python eis_qt.py
-```
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Known environment note: global `python.exe` / `py -3` is broken on this machine, but the repo venv works. Prefer `.venv\Scripts\python.exe ...`.
-
-Build Windows folder executable:
-
-```bash
-.venv\Scripts\python.exe -m PyInstaller --clean --noconfirm eis_app.spec
-```
-
-Build output:
+Скопируйте весь каталог `dist/eis_qt`, а не только `eis_qt.exe`, затем
+запустите:
 
 ```text
 dist\eis_qt\eis_qt.exe
 ```
 
-## Obsidian Documentation
+### Запуск из исходников
 
-The long-form human documentation lives in:
+Требуется Python 3.14 и зависимости проекта:
 
-```text
-docs/EIS Solver Vault/
+```bash
+python -m venv .venv
+python -m pip install -r requirements-lock.txt
+python eis_qt.py
 ```
 
-Open that folder in Obsidian as a vault. Start with `00 Start Here.md`.
-
-The vault now has a Russian dashboard, an Obsidian Canvas map (`EIS Solver Map.canvas`), Mermaid diagrams, Dataview-friendly blocks, user workflows, architecture notes, scientific-model notes, export contracts, validation status, decision logs, physical/model-validity notes, and a future Chem Suite roadmap.
-
-Scientific playbook pages:
-
-- `11 EIS Physical Cookbook.md`
-- `12 Fitting Math Notes.md`
-- `13 Model Validity Checklist.md`
-- `14 Known Failure Modes.md`
-- `15 Parameter Meaning Library.md`
-- `16 Decision Log.md`
-- `17 Chem Suite Philosophy.md`
-- `18 Теория - основы импедансной спектроскопии.md`
-- `19 Nyquist и Bode - чтение спектров.md`
-- `20 Реальные системы - CPE, Warburg и неоднозначность схем.md`
-- `21 Экспериментальная практика и артефакты.md`
-- `22 Transport Properties From EIS.md`
-- `23 Kramers-Kronig Validation.md`
-- `24 Глоссарий.md`
-- `26 Где лежит истина - статистический вывод и иерархический EIS.md`
-- `34 SPICE и инженерные макромодели.md`
-- `35 Экспорт C для контроллеров.md`
-- `36 Контур выпуска версии 1.md`
+Для разработки можно использовать незакреплённый список
+`requirements.txt`. Проверенный набор конкретных версий находится в
+`requirements-lock.txt`.
 
-The source PDF `Introductory impedance spectroscopy.pdf` is treated as local reference material and is ignored by git. The notes are Russian project-oriented summaries, not a verbatim copy.
+## Обычный рабочий сценарий
 
-## Baseline Behavior
+1. Откройте один или несколько файлов либо перетащите папку в окно.
+2. Проверьте найденный канал, количество точек и статус KK.
+3. Нажмите **Run auto-fit / Автофит**.
+4. Сравните лучшую модель с другими кандидатами и изучите residuals.
+5. Проверьте параметры, предупреждения и попадание в границы.
+6. Экспортируйте таблицы, отчёт и графики через **Export...**.
 
-1. EIS files are loaded from the first three numeric columns:
-   `frequency`, `Re(Z)`, `Im(Z)`.
-2. If `Im(Z)` is mostly positive, its sign is flipped so `-Im(Z)` plots upward in the usual Nyquist view.
-3. Dataset scale is estimated from geometry:
-   `R0 = min(Re)`, `R_transfer = max(Re) - min(Re)`, `C` from the frequency at the largest arc height.
-4. `initial_guess` and `bounds` are generated for every circuit.
-5. Models are fitted with `CustomCircuit.fit(..., weight_by_modulus=True)`.
-6. The selector rejects `BAD` when possible, finds the minimum BIC, treats `ΔBIC <= 2` as statistically comparable, and then prefers the simpler/better-status model.
-7. BioLogic `.mpr` and `.mpt` files are loaded through `galvani`; only files containing EIS columns are accepted.
-8. Model selection uses weighted residual diagnostics plus AIC/BIC. BIC evidence is evaluated before `OK/WARN`; status cannot overrule a decisively better BIC, but it breaks ties inside the `ΔBIC <= 2` support window.
-9. Fit status is diagnostic, not absolute truth:
-   `OK` means no current warnings, `WARN` means inspect flags/residuals, `BAD` means severe non-identifiability or invalid parameters.
-10. Kramers-Kronig/Lin-KK consistency is checked on load. It is a data-quality gate (`PASS`, `WARN`, `FAIL`), not a replacement for equivalent-circuit fitting.
-
-## Circuits
-
-Circuit lists live in `eis_core.py`:
-
-- `IDEAL_RC_CIRCUITS`
-- `INTERFACE_CIRCUITS`
-- `DIFFUSION_CIRCUITS`
-- `SIMPLE_CIRCUITS`
-- `ADVANCED_CIRCUITS`
-- `BASIC_CIRCUITS`
-- `INDUCTIVE_CIRCUITS`
-- `DEFAULT_CIRCUITS`
-
-Supported elements in `build_bounds_and_guess()`:
-
-- `R`
-- `C`
-- `CPE`
-- `W`
-- `Wo`
-- `Ws`
-- `L`
+Для ручного выбора семейства, собственной схемы и границ параметров включите
+**Pro mode**. Автоматический режим GUI и CLI использует один вычислительный
+путь `adaptive_v2`; явные пресеты и ручные схемы не расширяются скрытыми
+кандидатами.
 
-`L` support was added in the new core because old GUI listed inductive circuits but did not provide guesses/bounds for inductors, so those fits could silently fail.
+## Командная строка
 
-## Important Files
+Один файл:
 
-`eis_io.py`:
+```bash
+python eis_cli.py spectrum.csv --no-plot
+```
 
-- Active parser layer.
-- Returns `EisDataset(file_path, frequencies, z, source_format, columns, metadata)`.
-- Supports `.mpr` BioLogic binaries via `galvani.BioLogic.MPRfile`.
-- Supports `.mpt` BioLogic exports via `galvani.BioLogic.MPTfile` with encoding fallbacks.
-- Supports generic SmartStat/text files as a fallback.
-- Detects impedance channels such as `Z`, `Zce`, `Zstack`, `Zwe-ce`, `Z1`, and `Z2` when matching Re/Im columns exist.
+BioLogic и выбор канала:
 
-`eis_core.py`:
+```bash
+python eis_cli.py spectrum.mpr --channel Z1 --no-plot
+```
 
-- Main place for optimizer logic.
-- Add circuit families here.
-- Add or tune bounds here.
-- Contains `lin_kk_check()` and `KramersKronigResult` for the `impedance.validation.linKK` data-validity gate.
-- Keep GUI-independent.
-- Circuit families are split into ideal RC, interface/charge-transfer, diffusion, inductive, advanced, and full auto-fit lists.
-
-`eis_cli.py`:
-
-- Headless single-file and batch interface over `eis_pipeline.py`.
-- Accepts files and directories, recursive discovery, circuit presets/manual circuits, optimizer budgets, and parse/KK-only modes.
-- Exports stable schema-versioned JSON/JSONL plus CSV summaries and returns explicit process exit codes.
-
-`eis_pipeline.py`:
-
-- GUI-independent orchestration layer for loading, Lin-KK, fitting, best-model selection, timing, and failures.
-- Provides `AnalysisResult`, `analyze_file()`, input discovery, and JSON-safe serialization.
-- Intended as the shared foundation for dataset stress tests, CLI automation, and future interfaces.
-
-`eis_series.py`:
-
-- First series-level layer over JSONL results: infers current LG/21700 series metadata, measures topology stability, KK/status distributions, and parameter trajectories over SOC.
-- Pools candidate-model evidence across a series, selects a shared topology within a robust non-BAD coverage window, and smooths positive SOC parameter trajectories on a log scale.
-
-`eis_joint.py`:
-
-- Opt-in raw-spectrum joint fitting for an explicitly declared `file,soc` manifest; it preserves independent results and regularizes SOC parameter paths without changing single-file analysis.
-
-`eis_uncertainty.py`:
-
-- Opt-in centered complex residual bootstrap and weighted profile-likelihood intervals for a chosen spectrum/circuit.
-
-`eis_identifiability.py` / `eis_window_replication.py`:
-
-- Benchmark-only frequency-window stability and characteristic-support gate.
-- Reproducible truth-aware replication over CPE/Wo positions, noise levels,
-  and paired seeds; it does not publish calibrated production intervals.
-
-`eis_wo_guardband.py`:
-
-- Frozen calibration/holdout benchmark for a process-aware `Wo` upper-edge
-  guard band; holdout cannot reselect the calibration threshold.
-
-`eis_grid_density.py`:
-
-- Final v1 benchmark of Wo window stability versus points per decade and
-  frozen 10%/20% trim subsets.
-
-`eis_rational.py` / `eis_spice.py`:
-
-- First engineering realization layer after the scientific ECM:
-  `Z_ECM(f) -> stable passive rational model -> series R/C/L network -> .subckt`.
-- The scientific ECM and engineering model remain separate results with
-  separate validity and error criteria.
-- Automated ngspice 46 batch AC round-trip is implemented and passed the first
-  four-model pilot; the portable runtime stays outside git and is supplied
-  explicitly.
-- The frozen 18-scenario engineering corpus passed 5/6 calibration cases and
-  11/12 holdout cases, including all 6/6 ECMs derived from real LiPo spectra.
-  Both refusals were double-CPE cases whose SPICE numerical agreement worsened
-  as order increased; see
-  `validation_data/reports/2026-07-19-spice-engineering-corpus-v1.md`.
-- Band-aware global error-budget pruning now removes weak Foster sections only
-  while the complete realization stays within 0.25% of the rational model.
-  A new frozen 22-scenario corpus passed 6/6 calibration and 14/16 holdout
-  cases, including 6/6 new real-data ECMs. The external ngspice gate remains
-  1e-6%; see
-  `validation_data/reports/2026-07-19-spice-conditioning-corpus-v2.md`.
-
-`eis_drt.py`:
-
-- Topology-independent non-negative ridge DRT with hidden-frequency regularization selection and measured-band peak flags.
-
-`eis_resolution.py`:
-
-- Synthetic frequency-window/noise resolution maps that distinguish a short measurement band from a localized repeatability or model-mismatch problem.
-
-`eis_inference.py`:
-
-- Unified `fast`/`reliable` decision engine returning separate statistical and reliable recommendations, resolved time regions, localized information gaps, and next-measurement advice.
-
-`eis_inference_batch.py`:
-
-- Streaming directory/file batch inference to compact or full JSONL and flat CSV; failures are persisted per file and do not stop the corpus by default.
-- The compact v1 contract is frozen in `schemas/inference-summary-v1.schema.json`.
-- Compact JSONL/CSV summaries expose nullable calibrated diffusion-gate
-  status, thresholds, and the observed family ΔBIC without breaking schema v1.
-- The desktop GUI can import a full reliable-inference JSON and display the
-  calibrated family recommendation without reimplementing decision math.
-- Parameter intervals are not yet coverage-calibrated: the first frozen
-  truth-aware pilot measured substantial undercoverage, so parameter
-  identification labels remain benchmark-only.
-- This is diagnostic groundwork, not yet a hierarchical Bayesian fit.
-
-`eis_qt.py`:
-
-- Active GUI direction.
-- PySide6/Qt shell over `eis_core.py`.
-- Contains multi-file loading controls, a dataset summary table, an all-model fit table for the selected dataset, Nyquist and Bode plots, and a best-parameter table.
-- Provides draggable horizontal and vertical splitters for resizing the control area, dataset/results tables, log, plot tabs, and Parser details.
-- Includes a Residuals tab with Re/Im residuals and relative residual magnitude vs frequency.
-- Includes a KK Check tab with Lin-KK RC reconstruction, relative error vs frequency, and PASS/WARN/FAIL status.
-- Includes a Parser tab with source format, selected channel, selected columns, full column list, and parser metadata.
-- Provides an impedance-channel dropdown when multiple channels are detected.
-- Multi-analysis runs in a Qt worker thread with per-circuit progress and cooperative cancel controls. Cancel takes effect after the current circuit finishes.
-- Provides two circuit preset menus: `Interface` for ideal RC/CPE/charge-transfer/two-arc models and `Transport` for Warburg/diffusion/inductive models.
-- `Run selected` fits the chosen preset union; `Run auto-fit` uses the same
-  two-tier `adaptive_v2` contract as the CLI.
-- The preset menus and manual circuit input live behind `Pro mode`; the default workflow only exposes file loading, auto-fit, cancel, and export.
-- Validated SPICE package export is a toolbar-only specialist action. It is
-  completely hidden outside `Pro mode` and has no duplicate main-menu or
-  workspace button.
-- Validated controller C export is hidden beside the SPICE action. It asks
-  for sample period and current full scale, then emits both `float32` and Q31
-  implementations from the same discrete model.
-- Manual circuit mode accepts one `impedance.py` circuit string and includes a `?` help button with syntax examples.
-- Manual circuit mode can fill and edit `Initial`, `Lower`, and `Upper` parameter values before fitting.
-- `Open folder` recursively loads supported `.mpr`, `.mpt`, `.txt`, `.csv`, and `.dat` files for batch analysis.
-- Drag-and-drop accepts supported files and folders directly on the main window.
-- Pro manual circuit/bounds presets are saved locally to the user's config folder, normally `%APPDATA%\EIS Solver\pro_presets.json` on Windows. If that is not writable, the app falls back to `.eis_solver_user/pro_presets.json`.
-- `Export...` opens a type picker and writes CSV tables plus optional selected-report plots/text from one chosen base name.
-- Export outputs include `_summary.csv`, `_all_results.csv`, `_best_parameters.csv`, `_parser_metadata.csv`, `_kk_check.csv`, optional `_workbook.xlsx`, and optional selected `_report.txt`, `_nyquist.png`, `_bode.png`, `_residuals.png`, `_kk_check.png`.
-- `View -> Language` switches the main GUI between English and Russian. Data/export column names and circuit strings remain stable.
-- `Help -> About / Guide` opens a workflow guide covering quick auto-fit, Pro mode, manual circuits, diagnostics, export, and supported file formats.
-
-## Electrochemical Model Map
-
-- Use ideal `C` only for a clean first-pass RC sanity check. Real porous/rough electrodes usually need `CPE`.
-- `R0-p(R1,CPE0)` is the common Randles-like charge-transfer baseline: solution resistance plus double-layer/interface response.
-- Two-arc models are for film/SEI/coating plus charge-transfer processes, or two time constants in the electrode.
-- Warburg elements (`W`, `Wo`, `Ws`) are for diffusion/transport tails, especially low-frequency 45-degree behavior or finite-length diffusion.
-- Inductive models (`L0-...`) are for low-frequency inductive loops or wiring/fixture artifacts; they should be used deliberately, not as the default explanation.
-
-`eis_utils.py`:
-
-- Compatibility wrapper for legacy imports.
-- `load_any_eis_file()` now delegates to `eis_io.load_eis_file()`.
-
-`cycling.py`:
-
-- Legacy only.
-- Do not start future EIS work from this file.
-
-## Technical Debt
-
-- `eis.py` duplicates old optimizer logic.
-- `eis_app.py` is now only a legacy wrapper for `eis_qt.py`; the old customtkinter code below the wrapper is not executed.
-- `eis_desktop.py` was removed after the PySide6 migration.
-- `eis_utils.py` still contains old mojibake history, but its final definitions delegate to the new parser/core layer.
-- `galvani` is GPL-3.0-or-later. Revisit licensing if this becomes a distributed closed-source executable.
-- The automated `unittest` suite currently contains 129 passing tests.
-- `eis_release_check.py` is the executable release-candidate acceptance
-  contract for source, packaged GUI, BioLogic parsing, SPICE, and controller C.
-- Public distribution is blocked until the owner chooses licensing compatible
-  with bundled `galvani` (GPL-3.0-or-later) and PySide6 terms.
-- Each nonlinear circuit fit has a production budget of 5,000 function evaluations with practical tolerances; the upstream `impedance.py` defaults (100,000 evaluations and `ftol=1e-13`) are intentionally not used.
-- Parser cleaning rejects non-positive frequencies and median-aggregates exact duplicate frequencies while recording the operation in parser metadata.
-
-## TODO Short List
-
-1. Fully clean `eis_utils.py` or remove it after legacy imports are gone.
-2. Convert `eis.py` into a thin wrapper around `eis_cli.py`, or remove it after behavior is confirmed.
-3. Validate selectable impedance channels on real BioLogic files with Zce/Zstack/Zwe-ce/Z1/Z2 columns.
-4. Expand Russian localization coverage for long help text and domain messages if needed.
-5. Run the `0.9.0` folder build on a separate clean Windows machine.
-6. Choose the project distribution license before publishing binaries.
-7. Add import/export for Pro preset JSON files if sharing presets between machines becomes useful.
-8. Decide whether cycling/OCV analysis is needed; if yes, rebuild it as a separate module from scratch.
-9. Extend the validated BioLogic `.mpr` coverage to additional instruments, channels, and multi-cycle files.
-
-## Rules For Future AI Chats
-
-1. Read this README first.
-2. Then read `eis_core.py`.
-3. Read `eis_cli.py` or `eis_qt.py` only if the task touches that entrypoint.
-4. Do not begin with `cycling.py` unless the user explicitly asks for cycling analysis.
-5. Treat the current fit approach as baseline working behavior.
-6. Add new fitting logic to `eis_core.py`, not directly to GUI.
-7. Do not hide fit errors with bare `except`; store the error text in `FitResult`.
-8. Any circuit-list change starts in `DEFAULT_CIRCUITS` and `build_bounds_and_guess()`.
-9. Treat `eis_qt.py` as the active GUI target. Do not reintroduce tkinter/customtkinter.
-
-## Current Status
-
-Journal date: 2026-07-15.
-
-Open-data validation baseline (2026-07-17):
-
-- added a reproducible `validation_data/` workspace with source manifest, licenses, checksums, ignored raw files/artifacts, and tracked reports;
-- downloaded two CC BY 4.0 Zenodo corpora: 54 NMC811 21700 cells and 72 LG MJ1 cathode spectra across SOC;
-- fixed named-CSV aliases and a dangerous pandas-style unnamed-index case that could silently shift frequency/Re/Im columns;
-- parsed `126/126` real spectra;
-- Lin-KK results: `84 PASS`, `36 WARN`, `6 FAIL`, median reconstruction RMSE about `1.502%`;
-- completed 504 simple-family fits and 204 full-auto subset fits with zero optimizer failures or budget exhaustion;
-- identified a model-ranking risk: BIC can recommend `WARN` candidates even when an `OK` candidate exists, because current selection only separates `BAD` from non-`BAD`;
-- full report: `validation_data/reports/2026-07-17-open-datasets-baseline.md`.
-- added `eis_synthetic.py` with known circuits/parameters, controlled noise/outliers, deterministic seeds, CSV spectra, and `truth.jsonl`;
-- rejected a hard `OK > WARN` selector after it reduced topology recovery on synthetic data;
-- calibrated conservative `ΔBIC <= 2` selection: 22/30 exact topologies on the first RC/CPE benchmark, including 10/10 ideal RC, 10/10 one-CPE, and 2/10 two-arc spectra;
-- the two-arc result identifies multi-start fitting as the next core task; full report: `validation_data/reports/2026-07-17-synthetic-selector-baseline.md`.
-- added deterministic bounded multi-start fitting with `--restarts` / `--restart-seed` and per-fit start metrics;
-- four-start replay on the ten two-arc spectra improved the true model's RSS in 5/10 files (dramatically in four) but exact selected topology remained 2/10;
-- multi-start median runtime was 3.54 s versus 1.01 s for one start; it remains opt-in while staged screening is designed;
-- report: `validation_data/reports/2026-07-17-multistart-benchmark.md`.
-- added the first series-level analyzer and applied it to LG charge/discharge plus 54 cells at fixed SOC;
-- dominant topology stability was about 77.8% for both LG directions and 75.9% across the 21700 cells;
-- report: `validation_data/reports/2026-07-17-series-diagnostics-baseline.md`.
-- pooled series-model report: `validation_data/reports/2026-07-17-pooled-series-model.md`.
-- joint raw-series smoke report: `validation_data/reports/2026-07-17-joint-raw-series-smoke.md`.
-- held-out SOC cross-validation report: `validation_data/reports/2026-07-17-joint-soc-cross-validation.md`.
-- full 36-spectrum charge-series CV found only a 0.11% gain from smoothing (below the 1% acceptance gate), so joint regularization remains opt-in and disabled by evidence.
-- first bootstrap/profile report: `validation_data/reports/2026-07-17-bootstrap-profile-baseline.md`.
-- first topology-selection bootstrap found no stable winner (66.7% maximum versus the 90% gate): `validation_data/reports/2026-07-17-topology-bootstrap-baseline.md`.
-- first DRT baseline resolved two time regions while leaving topology undecided: `validation_data/reports/2026-07-17-drt-lg-soc50-baseline.md`.
-- DRT stability map retained the high-frequency peak in at least 93.3% of perturbations but rejected the low-frequency peak as regularization-sensitive: `validation_data/reports/2026-07-17-drt-peak-stability.md`.
-- first localized information-gap report found the 0.01 Hz floor sufficient and recommended repeating/checking stationarity specifically in 0.01-0.1 Hz: `validation_data/reports/2026-07-17-low-frequency-resolution-map.md`.
-- unified inference report: `validation_data/reports/2026-07-17-unified-inference-lg-soc50.md`.
-- batch inference pipeline report: `validation_data/reports/2026-07-17-batch-inference-pipeline.md`.
-- external generalization round 2 added 52 usable spectra across Inspectrum/Zahner pouch datasets, a missing-frequency refusal corpus, and a DRT veto for unsupported bootstrap-stable topology: `validation_data/reports/2026-07-17-external-generalization-round-2.md`.
-- two-tier adaptive routing converted the Li-polymer SOC result from `39/42 BAD` first to `42/42 WARN` by admitting inductance, then to `42/42 OK` by admitting `L + diffusion` only for coherent low-frequency residuals; mean fit error fell from 10.52% after tier 1 to 1.91% after tier 2: `validation_data/reports/2026-07-17-lipo-bad-diagnosis.md`.
-- family-level inference now preserves `best`, exposes the BIC support window,
-  and separates exact-topology from family bootstrap stability;
-- a 20-sample competing-family bootstrap over all 42 Li-polymer spectra gave
-  `840/840` wins to `inductive_diffusion` with zero refusals, while the exact
-  `W/Wo/Ws` topology passed the 90% gate in only `23/42` spectra;
-- unified and batch inference now default to the same two-tier `adaptive_v2`
-  routing as the main CLI; report:
-  `validation_data/reports/2026-07-17-diffusion-family-inference.md`.
-- added `eis_family_benchmark.py` for truth-aware calibration of BIC top-K,
-  topology bootstrap and family bootstrap;
-- on a bounded 16-spectrum synthetic calibration, the 90% bootstrap gate
-  still produced 3 false topology and 2 false family recommendations; 95%
-  did not remove them, while 6 negative controls produced zero false-positive
-  diffusion claims;
-- therefore bootstrap stability remains conditional evidence rather than a
-  calibrated correctness probability; report:
-  `validation_data/reports/2026-07-17-synthetic-family-calibration.md`.
-- added `eis_diffusion_map.py` and a 42-spectrum controlled observability grid;
-  family recovery was `28/42`, exact topology `7/42`, and truth entered the
-  BIC window in `10/42`;
-- a benchmark-only positive gate combining family bootstrap >=90% with
-  diffusion-vs-base ΔBIC >=10 made 4/4 correct family recommendations and
-  7 refusals across strong cells plus negative controls; exact `W/Wo/Ws`
-  remains unrecommended pending broader calibration;
-- report: `validation_data/reports/2026-07-17-diffusion-observability-map.md`.
-- replicated the unchanged frequency-window identifiability gate on 210
-  CPE/Wo spectra across five seeds, three noise levels, and seven positions;
-  it produced `0/60` outside-window false passes and retained `84/90`
-  strictly interior scenarios, but only `25/60` exact-edge scenarios;
-- parameter-identification statuses remain benchmark-only because interval
-  coverage is still undercalibrated; report:
-  `validation_data/reports/2026-07-18-frequency-window-identifiability-replication.md`.
-- a frozen 0.4-decade `Wo` upper-edge guard passed calibration at `207/216`
-  retention with `0/216` false passes, but failed independent holdout at
-  `183/216` retention; all 33 misses came from window instability and were
-  concentrated on the 41-point grid;
-- no guard was promoted to production; report:
-  `validation_data/reports/2026-07-18-wo-upper-edge-guardband-holdout.md`.
-- the final 945-spectrum density map found no monotone point-density threshold:
-  combined 10%/20% trimming retained `828/945`, while 10%-only retained
-  `931/945`; the 20% trim removes a fixed fraction of log-frequency span, so
-  denser sampling did not solve the information loss;
-- the parameter-uncertainty branch is closed for v1: `confidence` remains a
-  local fit diagnostic, and calibrated parameter statuses are not exported;
-  report: `validation_data/reports/2026-07-18-wo-grid-density-final.md`.
-
-First soft refactor completed:
-
-- added `eis_core.py`;
-- added `eis_cli.py`;
-- added `eis_qt.py` and migrated active GUI direction to PySide6;
-- added `requirements.txt`;
-- switched PyInstaller spec to `eis_qt.py`;
-- removed `eis_desktop.py`;
-- converted `eis_app.py` into a legacy wrapper for `eis_qt.py`.
-
-Validation after venv discovery:
-
-- `.venv\Scripts\python.exe -m py_compile eis_core.py eis_cli.py eis_qt.py eis_utils.py eis_app.py` passed;
-- `.venv\Scripts\python.exe eis_cli.py "double very good eis.txt" --no-plot` passed;
-- PySide6 offscreen smoke passed for empty window creation;
-- PySide6 offscreen smoke passed for loading test data, fitting, populating result/parameter tables, and plotting;
-- multi-file smoke passed with two loaded test files, two dataset rows, 17 circuit rows, and 7 best-parameter rows;
-- best-circuit row highlight changed from yellow to pale green with dark bold text for readability.
-- added `eis_io.py` parser layer;
-- installed and added `galvani` for BioLogic `.mpr/.mpt` support;
-- BioLogic `.mpt` smoke passed on public `galvani` `EIS_latin1.mpt` testdata;
-- real laboratory BioLogic EIS `.mpr` files were loaded and fitted successfully;
-- non-EIS BioLogic `.mpr` smoke correctly reports missing frequency/Re/Im EIS columns.
-- added Bode tab: `|Z|` and `Phase(Z)` vs frequency, with fit overlay when available;
-- report export now saves both `_nyquist.png` and `_bode.png`.
-- added scoring/ranking pipeline: weighted RSS, AIC, BIC, parameter-count penalty, fit status, and physical warning flags;
-- recommended model selection now uses BIC among non-BAD fits instead of raw mean fit error;
-- added Residuals tab and `_residuals.png` export.
-- added Parser tab and impedance-channel detection/selection foundation;
-- CLI accepts `--channel` for BioLogic/multi-channel files.
-- moved GUI multi-file fitting to a `QThread` worker;
-- added progress bar and cooperative Cancel action/button;
-- Qt worker smoke passed for two loaded files: progress `2/2`, two best fits, Run re-enabled, Cancel disabled, Save enabled.
-- split circuit families into ideal RC, interface/charge-transfer, diffusion, inductive, advanced, and full auto-fit lists;
-- added GUI preset controls: `Interface` menu, `Transport` menu, `Run selected`, and retained `Run auto-fit`;
-- preset smoke passed with `Interface screening + Off`: 4 circuits fitted, best circuit `R0-p(R1,CPE0)-p(R2,CPE1)`.
-- moved preset controls behind `Pro mode` so normal workflow defaults to auto-fit;
-- added manual one-circuit fitting with a `?` syntax help dialog;
-- manual smoke passed with `R0-p(R1,CPE0)-p(R2,CPE1)`: 1 circuit fitted and selected.
-- replaced the old selected-only save entry with `Export...`;
-- added export type picker for batch summary, all model results, best parameters, parser metadata, and selected report/plots;
-- export smoke passed on two fitted files: 2 summary rows, 34 model-result rows, 14 best-parameter rows, parser metadata, and selected PNG/TXT outputs.
-- added manual `Initial`/`Lower`/`Upper` bounds table behind `Pro mode`;
-- manual-bounds smoke passed with `R0-p(R1,CPE0)-p(R2,CPE1)`: 7 editable parameters, 1 manual circuit fitted, mean fit error about `1.000%`;
-- added recursive `Open folder` batch loader;
-- folder/common-loader smoke passed with generic txt plus BioLogic `.mpt`.
-- added drag-and-drop path collection for supported files/folders;
-- installed and added `openpyxl`;
-- added `_workbook.xlsx` export with Summary, All Results, Best Parameters, and Parser Metadata sheets;
-- XLSX smoke passed with two fitted files and four workbook sheets;
-- added local Pro preset save/load/delete for manual circuit and bounds;
-- Pro preset smoke passed with fallback `.eis_solver_user/pro_presets.json` in sandbox.
-- added `View -> Language` with English/Russian switching for the main GUI;
-- localization smoke passed: menu/button/table/tab/export-dialog text switches RU -> EN.
-- added `Help -> About / Guide` with English/Russian workflow guide;
-- About/Guide smoke passed: Help menu and dialog titles switch RU -> EN, English guide body verified.
-- added Kramers-Kronig/Lin-KK data-validity check in `eis_core.py`, CLI, GUI dataset table, KK Check tab, report plot, CSV export, and XLSX workbook;
-- KK smoke on `double very good eis.txt`: `PASS`, RMSE about `0.689%`, max error about `3.003%`, `mu` about `0.804`, `M=14`.
-- installed `pyinstaller` and built a folder executable with `eis_app.spec`;
-- exe artifact: `dist\eis_qt\eis_qt.exe`, about 19 MB launcher and about 278 MB total folder;
-- exe launch smoke passed: process started from `dist\eis_qt\eis_qt.exe` and stayed alive for 8 seconds.
-- best test-data circuit: `R0-p(R1,CPE0)-p(R2,CPE1)`;
-- mean fit error: about `1.000%`;
-- max parameter error: about `12.18%`.
-
-## Diffusion-family calibration
-
-The frozen benchmark-only diffusion gate was replicated on 70 positive
-synthetic spectra and 20 independent negative controls. It made 45 positive
-family recommendations, all correct, and refused the remaining 45 cases. It
-never recommends an exact `W/Wo/Ws` boundary condition.
-
-The unchanged gate was then tested on 60 diverse independent negative controls.
-It produced `0/60` false-positive recommendations, giving a one-sided 95%
-upper bound of `4.87%`. The positive-only family gate is therefore enabled in
-reliable inference; exact `W/Wo/Ws` topology and negative evidence remain
-uncalibrated. See [the production calibration report](validation_data/reports/2026-07-17-diffusion-gate-production-calibration.md).
+Пакетная обработка с потоковым JSONL:
+
+```bash
+python eis_cli.py measurements --recursive --format jsonl --output artifacts/run
+```
+
+Фиксированный пресет:
+
+```bash
+python eis_cli.py spectrum.csv --preset interface --format json --output result.json
+```
+
+CLI продолжает работу после плохого файла по умолчанию. Используйте
+`--fail-fast`, если нужно завершаться при первой ошибке, и `--mode parse` или
+`--mode kk` для изолированной проверки входных данных.
+
+## Инженерный экспорт
+
+Проверенный SPICE-пакет:
+
+```bash
+python eis_cli.py spectrum.csv \
+  --spice-export artifacts/cell_spice \
+  --ngspice /path/to/ngspice
+```
+
+Пакет C для контроллера:
+
+```bash
+python eis_cli.py spectrum.csv \
+  --controller-export artifacts/cell_controller \
+  --sample-period-us 100 \
+  --current-full-scale-a 10
+```
+
+Оба экспортёра работают по принципу fail-closed: при неприемлемой научной
+модели, ошибке KK или провале инженерных ворот конечный каталог не создаётся.
+SPICE требует настоящий запуск ngspice. Контроллерный пакет содержит общую
+модель, варианты `float32` и Q31, паспорт и эталонные векторы.
+
+## Поддерживаемые модели
+
+Основные элементы:
+
+- `R` — сопротивление;
+- `C` — идеальная ёмкость;
+- `CPE` — элемент постоянной фазы;
+- `W`, `Wo`, `Ws` — варианты Warburg;
+- `L` — индуктивность.
+
+Пример строки схемы:
+
+```text
+R0-p(R1,CPE0)-p(R2,CPE1)
+```
+
+`-` означает последовательное соединение, `p(...,...)` — параллельное.
+Списки схем, начальные оценки, bounds, фитинг и выбор модели находятся в
+`eis_core.py`.
+
+## Как читать результат
+
+- `OK` — текущая диагностика не обнаружила явных проблем.
+- `WARN` — результат может быть полезен, но требует проверки флагов,
+  residuals и параметров.
+- `BAD` — серьёзная неидентифицируемость, недопустимые параметры или
+  попадание в границы.
+- `PASS/WARN/FAIL` у KK относится к качеству и согласованности данных, а не к
+  истинности конкретной эквивалентной схемы.
+
+Точные рекомендации `W/Wo/Ws`, параметрические интервалы, bootstrap, profile
+likelihood, DRT и joint-fit остаются исследовательскими возможностями. Версия
+1 не выдаёт их за откалиброванную вероятность истины.
+
+## Документация и воспроизводимость
+
+- Начало документации: [`docs/EIS Solver Vault/00 Start Here.md`](docs/EIS%20Solver%20Vault/00%20Start%20Here.md)
+- Архитектура: [`03 Architecture.md`](docs/EIS%20Solver%20Vault/03%20Architecture.md)
+- Научная модель: [`04 Scientific Model.md`](docs/EIS%20Solver%20Vault/04%20Scientific%20Model.md)
+- Проверка и тесты: [`09 Validation And Tests.md`](docs/EIS%20Solver%20Vault/09%20Validation%20And%20Tests.md)
+- Выпускной контур: [`36 Контур выпуска версии 1.md`](docs/EIS%20Solver%20Vault/36%20Контур%20выпуска%20версии%201.md)
+- Памятка следующему разработчику/AI: [`AI Handoff.md`](docs/EIS%20Solver%20Vault/AI%20Handoff.md)
+- Отчёты воспроизводимой валидации: [`validation_data/reports`](validation_data/reports)
+
+Vault можно открыть целиком в Obsidian. Исходные внешние корпуса и тяжёлые
+сгенерированные артефакты намеренно не хранятся в Git; их происхождение и
+контрольные суммы описаны в `validation_data`.
+
+## Разработка и приёмка
+
+Тесты:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Исходная приёмка:
+
+```bash
+python eis_release_check.py --require-gcc --output release-passport.json
+```
+
+Полная Windows-приёмка дополнительно требует собранный exe и ngspice:
+
+```powershell
+.\.venv\Scripts\python.exe eis_release_check.py `
+  --require-spice `
+  --require-gcc `
+  --require-packaged `
+  --packaged-exe dist\eis_qt\eis_qt.exe `
+  --ngspice C:\path\to\ngspice_con.exe `
+  --gcc C:\path\to\gcc.exe
+```
+
+Workflow `.github/workflows/windows-build.yml` на каждом push в `main`
+собирает Windows x64 folder build на чистом GitHub-hosted runner, запускает
+тесты и packaged smoke на TXT и реальном BioLogic MPR, проверяет релизные
+метаданные и публикует ZIP-артефакт на 30 дней. SPICE/ngspice остаётся
+отдельным строгим воротом финальной локальной Windows-приёмки.
+
+## Цитирование
+
+Если EIS Solver использовался при подготовке результатов, укажите версию
+программы и процитируйте её согласно [`CITATION.md`](CITATION.md). GitHub
+также читает машинный файл [`CITATION.cff`](CITATION.cff) и предлагает готовые
+ссылки в APA и BibTeX.
+
+## Лицензия
+
+Copyright © 2026 Stepan Tarasov (`stpntrsvv`).
+
+EIS Solver распространяется на условиях **GNU General Public License v3.0
+or later** (`GPL-3.0-or-later`). Полный текст находится в [`LICENSE`](LICENSE).
+Программа предоставляется без каких-либо гарантий. Уведомления о сторонних
+компонентах находятся в [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

@@ -1,0 +1,109 @@
+name: Windows build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows-x64:
+    name: Build and smoke-test Windows x64
+    runs-on: windows-2025
+    timeout-minutes: 45
+
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+      QT_QPA_PLATFORM: "offscreen"
+      MPLCONFIGDIR: "${{ runner.temp }}\\matplotlib"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.14 x64
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          architecture: "x64"
+          cache: "pip"
+          cache-dependency-path: requirements-lock.txt
+
+      - name: Install locked dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check --upgrade pip
+          python -m pip install --disable-pip-version-check -r requirements-lock.txt
+
+      - name: Run automated tests
+        shell: pwsh
+        run: python -m unittest discover -s tests -v
+
+      - name: Build PyInstaller folder application
+        shell: pwsh
+        run: python -m PyInstaller --clean --noconfirm eis_app.spec
+
+      - name: Prepare tracked BioLogic smoke sample
+        shell: pwsh
+        run: |
+          $sample = Get-ChildItem -Path "swagelok_test" -Filter "*3_C01.mpr" | Select-Object -First 1
+          if ($null -eq $sample) {
+            throw "Tracked BioLogic EIS sample was not found."
+          }
+          Copy-Item -LiteralPath $sample.FullName -Destination "ci-biologic.mpr"
+
+      - name: Run packaged release acceptance
+        shell: pwsh
+        run: >-
+          python eis_release_check.py
+          --skip-tests
+          --require-packaged
+          --packaged-exe "dist\eis_qt\eis_qt.exe"
+          --biologic-sample "ci-biologic.mpr"
+          --output "dist\release-passport-windows.json"
+
+      - name: Record executable checksum
+        id: checksum
+        shell: pwsh
+        run: |
+          $exe = "dist\eis_qt\eis_qt.exe"
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash
+          $size = (Get-Item -LiteralPath $exe).Length
+          "$hash  eis_qt.exe" | Set-Content -Encoding ascii "dist\eis_qt\SHA256SUMS.txt"
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+          "size=$size" >> $env:GITHUB_OUTPUT
+
+      - name: Publish build summary
+        shell: pwsh
+        run: |
+          "## EIS Solver Windows x64" >> $env:GITHUB_STEP_SUMMARY
+          "" >> $env:GITHUB_STEP_SUMMARY
+          "- Commit: ``${{ github.sha }}``" >> $env:GITHUB_STEP_SUMMARY
+          "- Python: ``3.14 x64``" >> $env:GITHUB_STEP_SUMMARY
+          "- SHA-256: ``${{ steps.checksum.outputs.sha256 }}``" >> $env:GITHUB_STEP_SUMMARY
+          "- EXE size: ``${{ steps.checksum.outputs.size }}`` bytes" >> $env:GITHUB_STEP_SUMMARY
+          "- Tests, TXT smoke, BioLogic MPR smoke and release metadata: passed" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload Windows folder artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: eis-solver-windows-x64-${{ github.sha }}
+          path: |
+            dist/eis_qt
+            dist/release-passport-windows.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 9

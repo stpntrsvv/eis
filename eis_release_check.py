@@ -23,6 +23,13 @@ ROOT = Path(__file__).resolve().parent
 DEFAULT_SAMPLE = ROOT / "double very good eis.txt"
 DEFAULT_BIOLOGIC_SAMPLE = ROOT / "sample_data" / "EIS_latin1.mpt"
 DEFAULT_CIRCUIT = "R0-p(R1,CPE0)-p(R2,CPE1)"
+RELEASE_FILES = (
+    "LICENSE",
+    "README.md",
+    "CITATION.cff",
+    "CITATION.md",
+    "THIRD_PARTY_NOTICES.md",
+)
 
 
 @dataclass
@@ -102,6 +109,25 @@ def _discover_gcc(explicit: str | None) -> str | None:
     return shutil.which("gcc")
 
 
+def _release_files_check(name: str, root: Path, *, recursive: bool = False) -> CheckResult:
+    started = time.monotonic()
+    found = {}
+    for filename in RELEASE_FILES:
+        if recursive:
+            match = next((path for path in root.rglob(filename) if path.is_file()), None)
+        else:
+            candidate = root / filename
+            match = candidate if candidate.is_file() else None
+        found[filename] = str(match) if match else None
+    missing = [filename for filename, path in found.items() if path is None]
+    return CheckResult(
+        name=name,
+        status="failed" if missing else "passed",
+        seconds=time.monotonic() - started,
+        details={"root": str(root), "files": found, "missing": missing},
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run the EIS Solver v1 release-candidate acceptance checks."
@@ -132,6 +158,8 @@ def run(argv: list[str] | None = None) -> int:
     environment["QT_QPA_PLATFORM"] = "offscreen"
     checks: list[CheckResult] = []
 
+    checks.append(_release_files_check("release_metadata", ROOT))
+
     if not args.skip_tests:
         checks.append(_process_check(
             "automated_tests",
@@ -159,6 +187,11 @@ def run(argv: list[str] | None = None) -> int:
 
     packaged_exe = Path(args.packaged_exe).resolve() if args.packaged_exe else None
     if packaged_exe and packaged_exe.is_file():
+        checks.append(_release_files_check(
+            "packaged_release_metadata",
+            packaged_exe.parent,
+            recursive=True,
+        ))
         checks.append(_process_check(
             "packaged_generic_smoke",
             [packaged_exe, "--release-smoke", sample],

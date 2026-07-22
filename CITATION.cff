@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use EIS Solver in research, please cite the software and report the exact version used."
+title: "EIS Solver"
+type: software
+authors:
+  - family-names: "Tarasov"
+    given-names: "Stepan"
+    alias: "stpntrsvv"
+version: 0.9.0
+date-released: 2026-07-19
+repository-code: "https://github.com/stpntrsvv/eis"
+url: "https://github.com/stpntrsvv/eis"
+license: GPL-3.0-or-later
+abstract: >-
+  Desktop and command-line software for electrochemical impedance
+  spectroscopy data loading, Kramers-Kronig validation, equivalent-circuit
+  fitting, model diagnostics, batch analysis, and validated engineering
+  export to SPICE and embedded C.
+keywords:
+  - electrochemical impedance spectroscopy
+  - EIS
+  - equivalent circuit model
+  - Kramers-Kronig
+  - electrochemistry
+  - impedance
+  - SPICE

@@ -7,7 +7,13 @@ hiddenimports = collect_submodules('galvani')
 datas = (
     copy_metadata('galvani')
     + copy_metadata('impedance')
-    + [('THIRD_PARTY_NOTICES.md', '.')]
+    + [
+        ('LICENSE', '.'),
+        ('README.md', '.'),
+        ('CITATION.cff', '.'),
+        ('CITATION.md', '.'),
+        ('THIRD_PARTY_NOTICES.md', '.'),
+    ]
 )
 
 a = Analysis(
