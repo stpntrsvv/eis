@@ -28,7 +28,7 @@ jobs:
       PYTHONUTF8: "1"
       PYTHONIOENCODING: "utf-8"
       QT_QPA_PLATFORM: "offscreen"
-      MPLCONFIGDIR: "${{ runner.temp }}\\matplotlib"
+      MPLCONFIGDIR: "${{ github.workspace }}\\.matplotlib-ci"
 
     steps:
       - name: Check out repository
