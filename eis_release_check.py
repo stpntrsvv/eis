@@ -128,6 +128,20 @@ def _release_files_check(name: str, root: Path, *, recursive: bool = False) -> C
     )
 
 
+def _packaged_metadata_root(packaged_exe: Path) -> Path:
+    """Return the folder that owns bundled release metadata."""
+    executable_dir = packaged_exe.parent
+    contents_dir = executable_dir.parent
+    app_bundle = contents_dir.parent
+    if (
+        executable_dir.name == "MacOS"
+        and contents_dir.name == "Contents"
+        and app_bundle.suffix == ".app"
+    ):
+        return app_bundle
+    return executable_dir
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run the EIS Solver v1 release-candidate acceptance checks."
@@ -189,7 +203,7 @@ def run(argv: list[str] | None = None) -> int:
     if packaged_exe and packaged_exe.is_file():
         checks.append(_release_files_check(
             "packaged_release_metadata",
-            packaged_exe.parent,
+            _packaged_metadata_root(packaged_exe),
             recursive=True,
         ))
         checks.append(_process_check(
